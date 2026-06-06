@@ -43,6 +43,28 @@ export async function submitJob(file, profile) {
   return data.jobId;
 }
 
+export async function submitJobFromLink(url, profile) {
+  const response = await fetch(`${API_BASE}/api/process-link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, profile }),
+  });
+
+  if (response.status !== 202) {
+    let detail = `Server error (${response.status})`;
+    try {
+      const err = await response.json();
+      detail = err.detail || err.error || detail;
+    } catch {
+      detail = (await response.text()) || detail;
+    }
+    throw new Error(detail);
+  }
+
+  const data = await response.json();
+  return data.jobId;
+}
+
 export async function pollJob(jobId, onProgress) {
   while (true) {
     const response = await fetch(`${API_BASE}/api/jobs/${jobId}`);

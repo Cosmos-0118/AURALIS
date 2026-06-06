@@ -1,4 +1,4 @@
-import { cancelJob, downloadJobResult, fetchJob, pollJob, submitJob } from './api/pipeline.js';
+import { cancelJob, downloadJobResult, fetchJob, pollJob, submitJob, submitJobFromLink } from './api/pipeline.js';
 import { AudioEngine } from './audio/engine.js';
 import {
   drawCrtStatic,
@@ -16,7 +16,7 @@ import { ThemeDropdown } from './components/theme-dropdown.js';
 const engine = new AudioEngine();
 
 // DOM refs — populated in initApp
-let dropzone, fileInput, bayIdle, bayLoading, bayLoaded, fileNameSpan, titleWindow, clearFileBtn;
+let dropzone, fileInput, linkInput, linkSubmitBtn, bayIdle, bayLoading, bayLoaded, fileNameSpan, titleWindow, clearFileBtn;
 let decodePercent, decodeFileName, decodeStatus, decodeTrackFill, decodeSegmentBar;
 let waveformCanvas, playBtn, masterVolume;
 let lcdConsole, lcdTime;
@@ -27,6 +27,11 @@ let dialMarkerBpm, dialMarkerEnergy, valBpm, valEnergy;
 let cassetteMetaBadge, cassetteBadgeRow, cassetteProfileBadge, cassetteGenreBadge;
 let loadedCassette;
 let decodeProgressTimer = null;
+let decodeServerPercent = 0;
+let decodeDisplayPercent = 0;
+let decodeStatusText = 'INGESTING CASSETTE...';
+let canvasResizeObserver = null;
+let pendingCanvasRefresh = false;
 let activeJobId = null;
 let lastRenderedJobId = null;
 let lastTrackName = null;
@@ -54,45 +59,119 @@ const DECODE_STAGES = [
   { at: 92, text: 'FINALIZING DECODE...' },
 ];
 
-function showDecodeLoader(file) {
+function showDecodeLoader(displayName) {
   bayIdle?.classList.add('hidden');
   bayLoaded?.classList.add('hidden');
   bayLoading?.classList.remove('hidden');
+  bayLoading?.classList.add('is-active');
   dropzone?.classList.add('is-decoding');
 
   const lcdStatus = document.querySelector('.lcd-status');
   if (lcdStatus) lcdStatus.textContent = 'SYS STAT: DECODING';
 
-  const name = (file?.name || 'UNKNOWN').toUpperCase();
-  if (decodeFileName) decodeFileName.textContent = name;
-  updateDecodeProgress(0, DECODE_STAGES[0].text);
+  setDecodeFileName((displayName || 'UNKNOWN').toUpperCase());
+  decodeServerPercent = 0;
+  decodeDisplayPercent = 0;
+  decodeStatusText = DECODE_STAGES[0].text;
+  renderDecodeProgress(0, decodeStatusText);
+  startDecodeProgressAnimation();
 }
 
 function hideDecodeLoader() {
   bayLoading?.classList.add('hidden');
+  bayLoading?.classList.remove('is-active');
   dropzone?.classList.remove('is-decoding');
 
   const lcdStatus = document.querySelector('.lcd-status');
   if (lcdStatus) lcdStatus.textContent = 'SYS STAT: READY';
 
+  stopDecodeProgressAnimation();
+}
+
+function stopDecodeProgressAnimation() {
   if (decodeProgressTimer) {
     clearInterval(decodeProgressTimer);
     decodeProgressTimer = null;
   }
 }
 
-function updateDecodeProgress(percent, statusText) {
-  const clamped = Math.min(100, Math.max(0, Math.round(percent)));
-  if (decodePercent) decodePercent.textContent = `${String(clamped).padStart(3, '0')}%`;
-  if (decodeTrackFill) decodeTrackFill.style.width = `${clamped}%`;
+function getDecodeProgressCeiling() {
+  let nextStageAt = 98;
+  for (const stage of DECODE_STAGES) {
+    if (stage.at > decodeServerPercent) {
+      nextStageAt = stage.at - 1;
+      break;
+    }
+  }
+  const gap = nextStageAt - decodeServerPercent;
+  const softCap = decodeServerPercent + Math.max(6, gap * 0.88);
+  return Math.min(nextStageAt, softCap);
+}
+
+function tickDecodeProgressAnimation() {
+  const ceiling = getDecodeProgressCeiling();
+
+  if (decodeDisplayPercent < decodeServerPercent) {
+    const delta = Math.max(0.6, (decodeServerPercent - decodeDisplayPercent) * 0.28);
+    decodeDisplayPercent = Math.min(decodeServerPercent, decodeDisplayPercent + delta);
+  } else if (decodeDisplayPercent < ceiling) {
+    decodeDisplayPercent = Math.min(ceiling, decodeDisplayPercent + 0.16);
+  }
+
+  renderDecodeProgress(Math.round(decodeDisplayPercent), decodeStatusText);
+}
+
+function startDecodeProgressAnimation() {
+  stopDecodeProgressAnimation();
+  decodeProgressTimer = setInterval(tickDecodeProgressAnimation, 80);
+}
+
+function setDecodeFileName(name) {
+  if (!decodeFileName) return;
+  decodeFileName.textContent = name;
+
+  const tapeWindow = decodeFileName.closest('.decode-tape-window');
+  if (!tapeWindow) return;
+
+  tapeWindow.classList.remove('is-marquee');
+  decodeFileName.style.removeProperty('--decode-marquee-distance');
+
+  requestAnimationFrame(() => {
+    const overflow = decodeFileName.scrollWidth - tapeWindow.clientWidth;
+    if (overflow > 4) {
+      tapeWindow.classList.add('is-marquee');
+      const duration = Math.min(14, Math.max(6, overflow / 12));
+      decodeFileName.style.setProperty('--decode-marquee-distance', `${overflow}px`);
+      decodeFileName.style.setProperty('--decode-marquee-duration', `${duration}s`);
+    }
+  });
+}
+
+function renderDecodeProgress(clamped, statusText) {
+  const percent = Math.min(100, Math.max(0, Math.round(clamped)));
+  if (decodePercent) decodePercent.textContent = `${String(percent).padStart(3, '0')}%`;
+  if (decodeTrackFill) decodeTrackFill.style.width = `${percent}%`;
   if (decodeStatus && statusText) decodeStatus.textContent = statusText;
 
   if (decodeSegmentBar) {
-    const lit = Math.round((clamped / 100) * 10);
+    const lit = Math.round((percent / 100) * 10);
     decodeSegmentBar.querySelectorAll('.decode-segment').forEach((seg, i) => {
       seg.classList.toggle('is-lit', i < lit);
+      seg.classList.toggle('is-leading', i === lit && lit < 10);
+      seg.style.setProperty('--seg-i', String(i));
     });
   }
+}
+
+function updateDecodeProgress(percent, statusText) {
+  decodeServerPercent = Math.min(100, Math.max(0, percent));
+  if (statusText) decodeStatusText = statusText;
+
+  if (decodeDisplayPercent < decodeServerPercent - 2) {
+    decodeDisplayPercent = decodeServerPercent;
+  }
+
+  renderDecodeProgress(Math.round(decodeDisplayPercent), decodeStatusText);
 }
 
 function stageTextForProgress(percent) {
@@ -107,11 +186,14 @@ function getSelectedProfile() {
   return ProfileDropdown.getValue();
 }
 
-async function processViaBackend(file, profile) {
-  const jobId = await submitJob(file, profile);
+async function processViaBackend(submitFn, profile) {
+  const jobId = await submitFn(profile);
   activeJobId = jobId;
 
   const job = await pollJob(jobId, (status) => {
+    if (status.originalName) {
+      setDecodeFileName(status.originalName.toUpperCase());
+    }
     updateDecodeProgress(status.percent ?? 0, status.message || stageTextForProgress(status.percent ?? 0));
     printConsoleLines([
       `JOB ${jobId.slice(0, 12)}...`,
@@ -136,7 +218,8 @@ async function processViaBackend(file, profile) {
 
   const arrayBuffer = await blob.arrayBuffer();
   const buffer = await engine.loadProcessedAudio(arrayBuffer, report);
-  return { buffer, report, meta, jobId };
+  const trackName = job.originalName || meta.originalName || 'track';
+  return { buffer, report, meta, jobId, trackName };
 }
 
 async function cancelActiveJob() {
@@ -146,22 +229,43 @@ async function cancelActiveJob() {
 }
 
 function finishDecodeProgress() {
-  if (decodeProgressTimer) {
-    clearInterval(decodeProgressTimer);
-    decodeProgressTimer = null;
-  }
-  updateDecodeProgress(100, 'DECODE COMPLETE // LOCKED');
+  stopDecodeProgressAnimation();
+  decodeServerPercent = 100;
+  decodeDisplayPercent = 100;
+  renderDecodeProgress(100, 'DECODE COMPLETE // LOCKED');
   return new Promise((resolve) => setTimeout(resolve, 450));
 }
 
 function getCanvasColors() {
+  const theme = ThemeManager.getTheme(ThemeManager.getActiveThemeId());
+  const tokens = theme?.tokens || {};
+  const read = (token) => tokens[token] || ThemeManager.getToken(token);
   return {
-    glow: ThemeManager.getToken('--theme-crt-glow'),
-    dim: ThemeManager.getToken('--theme-crt-dim'),
-    shadow: ThemeManager.getToken('--theme-crt-shadow'),
-    decay: ThemeManager.getToken('--theme-crt-bg-decay'),
-    accent: ThemeManager.getToken('--theme-accent-primary'),
+    glow: read('--theme-crt-glow'),
+    dim: read('--theme-crt-dim'),
+    shadow: read('--theme-crt-shadow'),
+    decay: read('--theme-crt-bg-decay'),
+    accent: read('--theme-accent-primary'),
   };
+}
+
+function scheduleCanvasRefresh() {
+  if (pendingCanvasRefresh) return;
+  pendingCanvasRefresh = true;
+  requestAnimationFrame(() => {
+    pendingCanvasRefresh = false;
+    refreshCanvas();
+  });
+}
+
+function bindCanvasResize() {
+  if (!waveformCanvas) return;
+  const host = waveformCanvas.parentElement;
+  if (!host) return;
+
+  canvasResizeObserver?.disconnect();
+  canvasResizeObserver = new ResizeObserver(() => scheduleCanvasRefresh());
+  canvasResizeObserver.observe(host);
 }
 
 
@@ -334,6 +438,8 @@ function getPlaybackProgress() {
 function initApp() {
   dropzone = document.getElementById('dropzone');
   fileInput = document.getElementById('fileInput');
+  linkInput = document.getElementById('linkInput');
+  linkSubmitBtn = document.getElementById('linkSubmitBtn');
   bayIdle = document.getElementById('bayIdle');
   bayLoading = document.getElementById('bayLoading');
   bayLoaded = document.getElementById('bayLoaded');
@@ -372,8 +478,13 @@ function initApp() {
   loadedCassette = document.getElementById('loadedCassette');
   downloadBtn = document.getElementById('downloadBtn');
 
+  window.addEventListener('themeChanged', refreshCanvas);
+  window.addEventListener('layoutScaled', refreshCanvas);
+  window.addEventListener('resize', refreshCanvas);
+
   ThemeManager.init();
   LayoutScaler.init();
+  bindCanvasResize();
   ThemeDropdown.init();
   ProfileDropdown.init();
   TransportPlayer.init({
@@ -388,14 +499,12 @@ function initApp() {
 
   setUploadActive(true);
   if (ledPower) ledPower.classList.add('active');
+  scheduleCanvasRefresh();
   refreshCanvas();
 
   window.addEventListener('auralisConsole', (e) => {
     if (e.detail?.lines) printConsoleLines(e.detail.lines);
   });
-  window.addEventListener('themeChanged', refreshCanvas);
-  window.addEventListener('layoutScaled', refreshCanvas);
-  window.addEventListener('resize', refreshCanvas);
 
   requestAnimationFrame(animationLoop);
 }
@@ -421,6 +530,20 @@ function bindEvents() {
       if (e.target.files?.length > 0) {
         loadCassette(e.target.files[0]);
         fileInput.value = '';
+      }
+    });
+  }
+
+  if (linkSubmitBtn && linkInput) {
+    const submitLink = () => {
+      const url = linkInput.value.trim();
+      if (url) loadFromLink(url);
+    };
+    linkSubmitBtn.addEventListener('click', submitLink);
+    linkInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitLink();
       }
     });
   }
@@ -504,11 +627,13 @@ function setUploadActive(active) {
   const label = document.querySelector('label.cassette-slot');
   if (label) label.style.pointerEvents = active ? 'auto' : 'none';
   if (fileInput) fileInput.disabled = !active;
+  if (linkInput) linkInput.disabled = !active;
+  if (linkSubmitBtn) linkSubmitBtn.disabled = !active;
 }
 
 function refreshCanvas() {
   if (!waveformCanvas) return;
-  resizeCanvas(waveformCanvas);
+  if (!ensureCanvasSize()) return;
   if (engine.decodedBuffer && !engine.isPlaying) {
     drawWaveform(engine.decodedBuffer);
   } else {
@@ -516,12 +641,25 @@ function refreshCanvas() {
   }
 }
 
+function ensureCanvasSize() {
+  if (!waveformCanvas) return false;
+  const host = waveformCanvas.parentElement;
+  if (!host) return false;
+
+  const w = host.clientWidth;
+  const h = host.clientHeight;
+  if (w < 4 || h < 4) return false;
+
+  resizeCanvas(waveformCanvas);
+  return true;
+}
+
 function resizeCanvas(canvas) {
   const host = canvas?.parentElement;
   if (!host) return;
 
-  const w = Math.max(1, host.clientWidth);
-  const h = Math.max(1, host.clientHeight);
+  const w = Math.max(4, host.clientWidth);
+  const h = Math.max(4, host.clientHeight);
   const dpr = window.devicePixelRatio || 1;
 
   const bitmapW = Math.round(w * dpr);
@@ -552,7 +690,7 @@ function printConsoleLines(lines) {
 }
 
 function drawStaticScreen() {
-  if (!waveformCanvas) return;
+  if (!waveformCanvas || !ensureCanvasSize()) return;
   const canvas = waveformCanvas;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -709,7 +847,10 @@ async function loadCassette(file) {
     ]);
 
     updateDecodeProgress(2, 'UPLOADING TO PIPELINE...');
-    const { buffer, report: serverReport, meta: jobMeta, jobId } = await processViaBackend(file, profile);
+    const { buffer, report: serverReport, meta: jobMeta, jobId, trackName } = await processViaBackend(
+      (p) => submitJob(file, p),
+      profile,
+    );
 
     await finishDecodeProgress();
     hideDecodeLoader();
@@ -727,7 +868,7 @@ async function loadCassette(file) {
 
     await mountLoadedTrack({
       buffer,
-      trackName: file.name,
+      trackName: file.name || trackName,
       jobId,
       meta,
       consoleLines: [
@@ -752,6 +893,83 @@ async function loadCassette(file) {
       'SYSTEM DOCKED IN SAFE MODE.',
     ]);
     console.error('[Auralis] loadCassette failed:', err);
+  }
+}
+
+function linkDisplayName(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '').toUpperCase();
+  } catch {
+    return 'REMOTE STREAM';
+  }
+}
+
+async function loadFromLink(url) {
+  const trimmed = url.trim();
+  if (!trimmed) return;
+
+  try {
+    setUploadActive(false);
+    showDecodeLoader(linkDisplayName(trimmed));
+    ledProcess?.classList.add('active');
+    ledActive?.classList.remove('active');
+    const profile = getSelectedProfile();
+    printConsoleLines([
+      'RESOLVING REMOTE STREAM...',
+      `ROUTING TO PYTHON PIPELINE (${profile.toUpperCase()})...`,
+      'ASYNC JOB QUEUED — POLLING FOR STATUS...',
+    ]);
+
+    updateDecodeProgress(1, 'DOWNLOADING MEDIA...');
+    const { buffer, report: serverReport, meta: jobMeta, jobId, trackName } = await processViaBackend(
+      (p) => submitJobFromLink(trimmed, p),
+      profile,
+    );
+
+    await finishDecodeProgress();
+    hideDecodeLoader();
+    ledProcess?.classList.remove('active');
+
+    const r = engine.brainReport;
+    const meta = {
+      bpm: serverReport.bpm ?? r.bpm,
+      genre: serverReport.genre ?? r.genre,
+      mood: serverReport.mood ?? r.mood,
+      profile: serverReport.profile || profile,
+      safeguard: jobMeta?.safeguard ?? serverReport.safeguard ?? null,
+      safeguard_message: jobMeta?.safeguard_message ?? serverReport.safeguard_message ?? null,
+    };
+
+    await mountLoadedTrack({
+      buffer,
+      trackName,
+      jobId,
+      meta,
+      consoleLines: [
+        'PIPELINE RENDER COMPLETE.',
+        `PROFILE: ${(meta.profile || profile).toUpperCase()}`,
+        `GENRE DETECTED: ${(meta.genre || r.genre).toUpperCase()}`,
+        `DYNAMIC REGIME: ${(meta.mood || r.mood).toUpperCase()}`,
+        `BPM CALCULATED: ${formatBpm(meta.bpm)} BEATS/MIN`,
+        meta.safeguard_message || null,
+        'SERVER MIX LOADED // DIRECT PLAYBACK.',
+      ].filter(Boolean),
+    });
+
+    if (linkInput) linkInput.value = '';
+  } catch (err) {
+    await cancelActiveJob();
+    hideDecodeLoader();
+    bayIdle?.classList.remove('hidden');
+    setUploadActive(true);
+    ledProcess?.classList.remove('active');
+    printConsoleLines([
+      'CRITICAL: LINK DECODING ERROR.',
+      String(err.message || err).toUpperCase(),
+      'SYSTEM DOCKED IN SAFE MODE.',
+    ]);
+    console.error('[Auralis] loadFromLink failed:', err);
   }
 }
 
@@ -804,7 +1022,7 @@ async function resetCassette() {
 
   printConsoleLines([
     'AURALIS HI-FI AUTOMATIC INITIALIZED.',
-    'INSERT AUDIO CASSETTE TO DECODE PATHS.',
+    'INSERT AUDIO CASSETTE OR PASTE STREAM URL TO DECODE.',
   ]);
 
   setUploadActive(true);
@@ -812,7 +1030,7 @@ async function resetCassette() {
 }
 
 function drawWaveform(buffer) {
-  if (!waveformCanvas || !buffer) return;
+  if (!waveformCanvas || !buffer || !ensureCanvasSize()) return;
   const canvas = waveformCanvas;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;

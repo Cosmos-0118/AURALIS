@@ -130,6 +130,51 @@ function drawOscilloscopeTrace(ctx, plot, dataArray, palette, lineScale, beatPul
   ctx.restore();
 }
 
+function drawBufferWaveform(ctx, plot, buffer, palette, lineScale, { progress = null, dimmed = true } = {}) {
+  if (!buffer?.numberOfChannels) return;
+
+  const channel = buffer.getChannelData(0);
+  if (!channel?.length) return;
+
+  const { x, w, h, midY } = plot;
+  const amp = h * 0.42;
+  const step = Math.max(1, Math.floor(channel.length / w));
+
+  ctx.save();
+  ctx.beginPath();
+  for (let px = 0; px < w; px += 1) {
+    const idx = Math.min(channel.length - 1, px * step);
+    const y = midY + channel[idx] * amp;
+    if (px === 0) ctx.moveTo(x + px, y);
+    else ctx.lineTo(x + px, y);
+  }
+
+  ctx.strokeStyle = dimmed ? palette.dim : palette.glow;
+  ctx.globalAlpha = dimmed ? 0.62 : 0.88;
+  ctx.lineWidth = (dimmed ? 1.1 : 1.6) * lineScale;
+  ctx.lineJoin = 'round';
+  ctx.shadowBlur = dimmed ? 0 : 4 * lineScale;
+  ctx.shadowColor = palette.shadow || palette.glow;
+  ctx.stroke();
+  ctx.restore();
+
+  if (progress != null && Number.isFinite(progress)) {
+    const clamped = Math.max(0, Math.min(1, progress));
+    const playheadX = x + w * clamped;
+    ctx.save();
+    ctx.strokeStyle = palette.glow;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.5 * lineScale;
+    ctx.shadowBlur = 5 * lineScale;
+    ctx.shadowColor = palette.shadow || palette.glow;
+    ctx.beginPath();
+    ctx.moveTo(playheadX, plot.y);
+    ctx.lineTo(playheadX, plot.y + plot.h);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 export function drawCrtStatic(ctx, w, h, colors, lineScale) {
   ctx.clearRect(0, 0, w, h);
   const plot = getPlotArea(w, h);
@@ -141,6 +186,7 @@ export function drawCrtWaveform(ctx, w, h, buffer, colors, lineScale, {
   playing = false,
   dataArray = null,
   beatPulse = 0,
+  progress = null,
 } = {}) {
   const plot = getPlotArea(w, h);
   const palette = beatPalette(colors, playing ? beatPulse : 0);
@@ -153,6 +199,10 @@ export function drawCrtWaveform(ctx, w, h, buffer, colors, lineScale, {
   }
 
   drawOscilloscopeChrome(ctx, plot, palette, lineScale, playing ? 0.07 : 0.1);
+
+  if (buffer && (!playing || !dataArray)) {
+    drawBufferWaveform(ctx, plot, buffer, palette, lineScale, { progress, dimmed: !playing });
+  }
 
   if (playing && dataArray) {
     drawOscilloscopeTrace(ctx, plot, dataArray, palette, lineScale, beatPulse);

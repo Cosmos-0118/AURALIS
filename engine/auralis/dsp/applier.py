@@ -22,7 +22,7 @@ from pedalboard import (
 )
 
 from auralis.dsp.envelopes import envelope_to_samples
-from auralis.dsp.master_bus import master_process
+from auralis.dsp.master_bus import master_process, measure_integrated_lufs, resolve_lufs_target, stage_pre_master_gain
 from auralis.dsp.ms import apply_elliptical_filter, phase_correlation
 from auralis.dsp.safeguard import (
     ROLLBACK_FACTOR,
@@ -361,7 +361,30 @@ def render(
             report.correlation_after,
         )
 
-    mastered = master_process(pre_master, sample_rate, active_plan)
+    source_audio: np.ndarray | None = None
+    source_lufs: float | None = None
+    if source and source.exists():
+        try:
+            source_audio, _ = _load_stem(source)
+            source_lufs = measure_integrated_lufs(source_audio, sample_rate)
+            if source_lufs is not None:
+                logger.info("Source integrated loudness: %.1f LUFS", source_lufs)
+        except Exception as exc:
+            logger.warning("Could not measure source loudness: %s", exc)
+
+    lufs_target = resolve_lufs_target(active_plan.master_lufs_target, source_lufs)
+    if source_lufs is not None and lufs_target > active_plan.master_lufs_target:
+        logger.info(
+            "LUFS target raised: %.1f → %.1f (source %.1f LUFS)",
+            active_plan.master_lufs_target,
+            lufs_target,
+            source_lufs,
+        )
+
+    if source_audio is not None:
+        pre_master = stage_pre_master_gain(pre_master, source_audio, sample_rate)
+
+    mastered = master_process(pre_master, sample_rate, active_plan, lufs_target=lufs_target)
     sf.write(str(output_path), mastered.T, sample_rate, subtype="PCM_24")
     logger.info("Final mix written to %s", output_path)
     return RenderOutcome(

@@ -117,7 +117,7 @@ export class AudioEngine {
     
     // 1. Outputs
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.8, ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(1.0, ctx.currentTime);
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.75;

@@ -11,8 +11,23 @@ import {
   resolveProfile,
   uploadDir,
 } from '../config.js';
+import { downloadMediaFromUrl } from '../jobs/link-download.js';
 import { activeJobs, cancelJob, clearAllRenders, deleteRenderJobs, listRenderJobs, spawnPipeline } from '../jobs/runner.js';
 import { readJobStatus, writeJobStatus } from '../jobs/status.js';
+
+function sanitizeJobSlug(value) {
+  return String(value || 'media').replace(/[^\w.-]+/g, '_').slice(0, 80);
+}
+
+function isValidMediaUrl(raw) {
+  if (!raw || typeof raw !== 'string') return false;
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -70,6 +85,66 @@ export function createApiRouter() {
     res.status(202).json({ jobId, status: 'queued', profile });
   });
 
+  router.post('/process-link', (req, res) => {
+    const url = req.body?.url?.trim();
+    if (!isValidMediaUrl(url)) {
+      return res.status(400).json({ error: 'A valid http(s) media URL is required.' });
+    }
+
+    const profile = resolveProfile(req.body?.profile);
+    const slug = sanitizeJobSlug(new URL(url).hostname);
+    const jobId = `${Date.now()}_${slug}`;
+    const workDir = path.join(rendersDir, jobId);
+    const originalName = slug;
+    const outputPath = path.join(workDir, `${originalName}_${profile}.wav`);
+
+    writeJobStatus(workDir, {
+      jobId,
+      status: 'downloading',
+      percent: 1,
+      message: 'DOWNLOADING MEDIA...',
+      profile,
+      originalName,
+      output: outputPath,
+      sourceUrl: url,
+    });
+
+    console.log(`[*] Link job queued: ${url} (profile=${profile}, job=${jobId})`);
+
+    res.status(202).json({ jobId, status: 'downloading', profile });
+
+    downloadMediaFromUrl(url, uploadDir)
+      .then(({ inputPath, originalName: resolvedName }) => {
+        const resolvedOutputPath = path.join(workDir, `${resolvedName}_${profile}.wav`);
+
+        writeJobStatus(workDir, {
+          status: 'queued',
+          percent: 2,
+          message: 'UPLOADING TO PIPELINE...',
+          originalName: resolvedName,
+          output: resolvedOutputPath,
+        });
+
+        spawnPipeline({
+          jobId,
+          workDir,
+          inputPath,
+          outputPath: resolvedOutputPath,
+          profile,
+          originalName: resolvedName,
+        });
+      })
+      .catch((err) => {
+        writeJobStatus(workDir, {
+          status: 'failed',
+          percent: 0,
+          message: 'DOWNLOAD FAILED.',
+          error: err.message || String(err),
+        });
+        console.error(`[!] Link download failed (${jobId}):`, err);
+      });
+  });
+
   router.get('/jobs/:id', (req, res) => {
     const jobId = req.params.id;
     const workDir = path.join(rendersDir, jobId);
@@ -89,6 +164,7 @@ export function createApiRouter() {
       percent: status.percent ?? 0,
       message: status.message ?? '',
       profile: status.profile,
+      originalName: status.originalName ?? null,
       meta: status.meta ?? null,
       error: status.error ?? null,
       updatedAt: status.updatedAt ?? null,

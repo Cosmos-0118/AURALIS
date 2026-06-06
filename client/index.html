@@ -117,7 +117,7 @@
             
             <div class="lcd-console" id="lcdConsole">
               <div class="console-line text-amber font-mono">> AURALIS HI-FI AUTOMATIC INITIALIZED.</div>
-              <div class="console-line text-amber font-mono">> INSERT AUDIO CASSETTE TO DECODE PATHS.</div>
+              <div class="console-line text-amber font-mono">> INSERT AUDIO CASSETTE OR PASTE STREAM URL TO DECODE.</div>
             </div>
 
             <!-- Auto-DSP Diagnostic Meters -->
@@ -213,6 +213,18 @@
               </ul>
             </div>
           </div>
+          <div class="link-input-row">
+            <input
+              type="url"
+              class="link-input"
+              id="linkInput"
+              placeholder="PASTE YOUTUBE OR STREAM URL..."
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button type="button" class="link-submit-btn" id="linkSubmitBtn">PROCESS LINK</button>
+          </div>
+          <div class="link-or-divider" aria-hidden="true"><span>OR</span></div>
           <label class="cassette-slot" for="fileInput">
             <div class="slot-opening"></div>
             <div class="cassette-label">
@@ -376,7 +388,7 @@
           <div class="deck-module deck-module-fader">
             <div class="module-control-area">
               <div class="retro-fader-track">
-                <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume">
+                <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="1" aria-label="Master volume">
               </div>
             </div>
             <span class="module-label">MASTER OUT</span>
