@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/uploads/*
+data/renders/*
+!data/uploads/.gitkeep
+!data/renders/.gitkeep
+pipeline_output/
+__pycache__/
+*.pyc
+.venv/
+venv/
+engine/.venv/
+engine/fixtures/test.mp3
+.env
+.DS_Store
