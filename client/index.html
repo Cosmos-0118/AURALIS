@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auralis // Retro Automatic Hi-Fi DSP</title>
+  
+  <!-- Modern Industrial Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Outfit:wght@400;700&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/styles/app.css">
+</head>
+<body>
+  <div class="app-stage">
+    <div class="device-body">
+    <!-- Top Faceplate Screws and Ventilation -->
+    <div class="faceplate-top">
+      <div class="screw"></div>
+      <div class="vent-grill">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="screw"></div>
+    </div>
+
+    <!-- Header / Branding -->
+    <header class="device-header">
+      <div class="brand">
+        <span class="brand-logo">A</span>
+        <div class="brand-text">
+          <h1>Auralis</h1>
+          <p>MODEL DSP-1 // AUTOMATIC BINAURAL MATRIX</p>
+        </div>
+      </div>
+      
+      <!-- Theme Selection -->
+      <div class="theme-select-container theme-dropdown" id="themeDropdown">
+        <span class="theme-select-label" id="themeDropdownLabel">SYSTEM THEME</span>
+        <div class="theme-dropdown-root">
+          <button
+            type="button"
+            class="theme-dropdown-trigger"
+            id="themeDropdownTrigger"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-labelledby="themeDropdownLabel themeDropdownValue"
+          >
+            <span class="theme-dropdown-value" id="themeDropdownValue">BRAUN DSP-1 (Retro)</span>
+            <span class="theme-dropdown-chevron" aria-hidden="true"></span>
+          </button>
+          <ul
+            class="theme-dropdown-menu"
+            id="themeDropdownMenu"
+            role="listbox"
+            aria-labelledby="themeDropdownLabel"
+            hidden
+          >
+            <li class="theme-dropdown-option" data-theme-id="braun" role="option">
+              <span class="theme-dropdown-swatch" data-theme-preview="braun"></span>
+              <span class="theme-dropdown-option-label">BRAUN DSP-1 (Retro)</span>
+            </li>
+            <li class="theme-dropdown-option" data-theme-id="cyberpunk" role="option">
+              <span class="theme-dropdown-swatch" data-theme-preview="cyberpunk"></span>
+              <span class="theme-dropdown-option-label">CYBER DECODER (Synthwave)</span>
+            </li>
+            <li class="theme-dropdown-option" data-theme-id="vaporwave" role="option">
+              <span class="theme-dropdown-swatch" data-theme-preview="vaporwave"></span>
+              <span class="theme-dropdown-option-label">VAPOR GLARE (Glassmorphism)</span>
+            </li>
+            <li class="theme-dropdown-option" data-theme-id="nordic" role="option">
+              <span class="theme-dropdown-swatch" data-theme-preview="nordic"></span>
+              <span class="theme-dropdown-option-label">TE-01 MONO (Minimalist)</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="led-container">
+        <div class="led-wrapper">
+          <div class="led red" id="ledPower"></div>
+          <span class="led-label">PWR</span>
+        </div>
+        <div class="led-wrapper">
+          <div class="led orange" id="ledProcess"></div>
+          <span class="led-label">ANLYZ</span>
+        </div>
+        <div class="led-wrapper">
+          <div class="led green" id="ledActive"></div>
+          <span class="led-label">DSP</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Grid Panels -->
+    <div class="device-grid">
+      
+      <!-- LCD Console Diagnostic Display -->
+      <section class="lcd-screen-container">
+        <div class="lcd-screen">
+          <div class="lcd-inner">
+            <div class="lcd-row header-row">
+              <span class="lcd-status">SYS STAT: READY</span>
+              <span class="lcd-time" id="lcdTime">00:00.00</span>
+            </div>
+            
+            <div class="lcd-console" id="lcdConsole">
+              <div class="console-line text-amber font-mono">> AURALIS HI-FI AUTOMATIC INITIALIZED.</div>
+              <div class="console-line text-amber font-mono">> INSERT AUDIO CASSETTE TO DECODE PATHS.</div>
+            </div>
+
+            <!-- Auto-DSP Diagnostic Meters -->
+            <div class="lcd-meters">
+              <div class="meter-column">
+                <span class="meter-label">EQ.LOW</span>
+                <div class="lcd-meter-bar"><div class="lcd-meter-fill" id="meterBass" style="width: 0%"></div></div>
+                <span class="meter-val" id="valMeterBass">0.0dB</span>
+              </div>
+              <div class="meter-column">
+                <span class="meter-label">EQ.HIGH</span>
+                <div class="lcd-meter-bar"><div class="lcd-meter-fill" id="meterTreble" style="width: 0%"></div></div>
+                <span class="meter-val" id="valMeterTreble">0.0dB</span>
+              </div>
+              <div class="meter-column">
+                <span class="meter-label">3D.ORB</span>
+                <div class="lcd-meter-bar"><div class="lcd-meter-fill" id="meterOrbit" style="width: 0%"></div></div>
+                <span class="meter-val" id="valMeterOrbit">0.0Hz</span>
+              </div>
+              <div class="meter-column">
+                <span class="meter-label">SPACE</span>
+                <div class="lcd-meter-bar"><div class="lcd-meter-fill" id="meterWidth" style="width: 0%"></div></div>
+                <span class="meter-val" id="valMeterWidth">1.0x</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Waveform CRT Window -->
+      <section class="crt-window-container">
+        <div class="crt-glare"></div>
+        <div class="crt-screen">
+          <div class="crt-grid-overlay"></div>
+          <div class="crt-content">
+            <canvas id="waveformCanvas"></canvas>
+            <div class="crt-playback-progress" id="progressBar"></div>
+            <div class="crt-scanline"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cassette Load Bay / Upload Area -->
+      <section class="cassette-bay" id="dropzone">
+        <input type="file" id="fileInput" accept="audio/*" hidden>
+
+        <!-- Idle State -->
+        <div class="bay-content" id="bayIdle">
+          <div class="profile-select-row">
+            <label class="profile-select-label" for="profileSelect">OUTPUT MODE</label>
+            <select id="profileSelect" class="profile-select" aria-label="Output processing profile">
+              <option value="god" selected>GOD MODE</option>
+              <option value="hyper_immersive">HYPER IMMERSIVE</option>
+              <option value="concert">CONCERT</option>
+              <option value="cinema">CINEMA</option>
+              <option value="audiophile">AUDIOPHILE</option>
+              <option value="basshead">BASSHEAD</option>
+            </select>
+          </div>
+          <label class="cassette-slot" for="fileInput">
+            <div class="slot-opening"></div>
+            <div class="cassette-label">
+              <span>CASSETTE IN / DECODE SLOT</span>
+              <p>CLICK OR DRAG FILE HERE TO ENGAGE BRAIN</p>
+            </div>
+          </label>
+        </div>
+
+        <!-- Loading / Decode State -->
+        <div class="bay-content hidden" id="bayLoading" aria-live="polite" aria-busy="true">
+          <div class="decode-loader">
+            <div class="decode-loader-header">
+              <span class="decode-tag">DECODE IN PROGRESS</span>
+              <span class="decode-percent" id="decodePercent">000%</span>
+            </div>
+
+            <div class="decode-cassette-visual">
+              <div class="decode-spindle" aria-hidden="true"></div>
+              <div class="decode-tape-window">
+                <div class="decode-scan-beam" aria-hidden="true"></div>
+                <span class="decode-filename" id="decodeFileName">TRACK.MP3</span>
+              </div>
+              <div class="decode-spindle" aria-hidden="true"></div>
+            </div>
+
+            <div class="decode-segment-bar" id="decodeSegmentBar" aria-hidden="true">
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+              <span class="decode-segment"></span>
+            </div>
+
+            <div class="decode-track">
+              <div class="decode-track-fill" id="decodeTrackFill"></div>
+            </div>
+
+            <div class="decode-status-row">
+              <span class="decode-led" aria-hidden="true"></span>
+              <span class="decode-status" id="decodeStatus">INGESTING CASSETTE...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loaded/Engaged State -->
+        <div class="bay-content bay-content-loaded hidden" id="bayLoaded">
+          <div class="deck-chamber">
+            <div class="deck-chamber-rail deck-chamber-rail-top" aria-hidden="true"></div>
+
+            <div class="retro-cassette" id="loadedCassette">
+              <span class="cassette-screw cassette-screw-tl" aria-hidden="true"></span>
+              <span class="cassette-screw cassette-screw-tr" aria-hidden="true"></span>
+              <span class="cassette-screw cassette-screw-bl" aria-hidden="true"></span>
+              <span class="cassette-screw cassette-screw-br" aria-hidden="true"></span>
+
+              <div class="cassette-notch cassette-notch-left" aria-hidden="true"></div>
+              <div class="cassette-notch cassette-notch-right" aria-hidden="true"></div>
+
+              <div class="cassette-label-sticker">
+                <div class="sticker-brand-row">
+                  <span class="sticker-brand">AURALIS</span>
+                  <span class="sticker-meta" id="cassetteMetaBadge">TYPE II · HI-FI</span>
+                </div>
+                <div class="sticker-badge-row" id="cassetteBadgeRow" hidden>
+                  <span class="sticker-profile-badge" id="cassetteProfileBadge"></span>
+                  <span class="sticker-genre-badge" id="cassetteGenreBadge"></span>
+                </div>
+                <div class="sticker-title-window" id="titleWindow">
+                  <span class="sticker-song-title" id="fileName" title="">SONG_TITLE.MP3</span>
+                </div>
+              </div>
+
+              <div class="cassette-window">
+                <div class="cassette-window-glass" aria-hidden="true"></div>
+                <div class="tape-rail tape-rail-top" aria-hidden="true"></div>
+                <div class="tape-rail tape-rail-bottom" aria-hidden="true"></div>
+                <div class="cassette-spindles">
+                  <div class="spindle left" id="spindleLeft"></div>
+                  <div class="spindle right" id="spindleRight"></div>
+                </div>
+                <div class="tape-exposed" aria-hidden="true"></div>
+                <div class="head-block" aria-hidden="true"></div>
+              </div>
+            </div>
+
+            <div class="deck-chamber-rail deck-chamber-rail-bottom" aria-hidden="true"></div>
+
+            <div class="deck-transport-bar">
+              <div class="deck-status">
+                <span class="deck-status-led" id="deckStatusLed" aria-hidden="true"></span>
+                <span class="deck-status-label">TAPE LOCK</span>
+              </div>
+              <button class="eject-btn" id="clearFileBtn" title="Eject Cassette" type="button">
+                <span class="eject-btn-label">EJECT</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Physical Control Deck -->
+      <section class="control-deck">
+        <div class="control-panel-label">DYNAMIC HARDWARE INTERFACE</div>
+        
+        <div class="deck-elements">
+          <div class="deck-module">
+            <div class="module-control-area">
+              <button class="mech-toggle-btn" id="playBtn" disabled aria-label="Play or pause">
+                <div class="mech-btn-cap"></div>
+                <span class="mech-label">PLAY<br>RUN</span>
+              </button>
+            </div>
+            <span class="module-label">ENGAGE</span>
+          </div>
+
+          <div class="deck-module">
+            <div class="module-control-area">
+              <div class="retro-dial" id="dialBpm">
+                <div class="dial-marker" id="dialMarkerBpm"></div>
+                <span class="dial-value" id="valBpm">000</span>
+              </div>
+            </div>
+            <span class="module-label">BPM DETECT</span>
+          </div>
+
+          <div class="deck-module">
+            <div class="module-control-area">
+              <div class="retro-dial" id="dialEnergy">
+                <div class="dial-marker" id="dialMarkerEnergy"></div>
+                <span class="dial-value" id="valEnergy">0%</span>
+              </div>
+            </div>
+            <span class="module-label">RMS ENERGY</span>
+          </div>
+
+          <div class="deck-module deck-module-fader">
+            <div class="module-control-area">
+              <div class="retro-fader-track">
+                <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume">
+              </div>
+            </div>
+            <span class="module-label">MASTER OUT</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Faceplate Screws and Branding -->
+    <div class="faceplate-bottom">
+      <div class="screw"></div>
+      <div class="braun-compliance">AURALIS GMBH - FRANKFURT // MADE IN GERMANY</div>
+      <div class="screw"></div>
+    </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
