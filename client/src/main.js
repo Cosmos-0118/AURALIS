@@ -8,6 +8,7 @@ import {
 } from './components/crt-display.js';
 import { RendersPanel } from './components/renders-panel.js';
 import { applyRollingTitle, bindRollingTitleResize } from './components/rolling-title.js';
+import { AmbientBackground } from './components/ambient-background.js';
 import { TransportPlayer } from './components/transport-player.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
@@ -15,6 +16,7 @@ import { ProfileDropdown, PROFILE_OPTIONS } from './components/profile-dropdown.
 import { ThemeDropdown } from './components/theme-dropdown.js';
 
 const engine = new AudioEngine();
+let ambientBackground = null;
 
 // DOM refs — populated in initApp
 let dropzone, fileInput, linkInput, linkSubmitBtn, bayIdle, bayLoading, bayLoaded, fileNameSpan, titleWindow, clearFileBtn;
@@ -247,6 +249,31 @@ function getCanvasColors() {
   };
 }
 
+function refreshAmbientBackground() {
+  if (!ambientBackground) return;
+  ambientBackground.setTheme(ThemeManager.getActiveThemeId());
+  ambientBackground.resize();
+}
+
+function updateAmbientBackground() {
+  if (!ambientBackground) return;
+
+  let freqData = null;
+  if (engine.waveformAnalyser) {
+    freqData = new Uint8Array(engine.waveformAnalyser.frequencyBinCount);
+    engine.waveformAnalyser.getByteFrequencyData(freqData);
+  }
+
+  const beatPhase = engine.isPlaying ? engine.getBeatPhase() : 0;
+
+  ambientBackground.setAudioState({
+    isPlaying: engine.isPlaying,
+    freqData,
+    beatPulse: 0.55 + 0.45 * Math.sin(beatPhase * Math.PI * 2),
+  });
+  ambientBackground.draw();
+}
+
 function scheduleCanvasRefresh() {
   if (pendingCanvasRefresh) return;
   pendingCanvasRefresh = true;
@@ -477,11 +504,20 @@ function initApp() {
   downloadBtn = document.getElementById('downloadBtn');
 
   window.addEventListener('themeChanged', refreshCanvas);
+  window.addEventListener('themeChanged', refreshAmbientBackground);
   window.addEventListener('layoutScaled', refreshCanvas);
   window.addEventListener('resize', refreshCanvas);
+  window.addEventListener('resize', refreshAmbientBackground);
 
   ThemeManager.init();
   LayoutScaler.init();
+
+  const ambientCanvas = document.getElementById('ambientBg');
+  if (ambientCanvas) {
+    ambientBackground = new AmbientBackground(ambientCanvas);
+    refreshAmbientBackground();
+  }
+
   bindCanvasResize();
   bindTitleMarqueeResize();
   ThemeDropdown.init();
@@ -1113,6 +1149,7 @@ function animationLoop() {
   }
 
   syncPlaybackUi();
+  updateAmbientBackground();
   requestAnimationFrame(animationLoop);
 }
 
