@@ -164,6 +164,52 @@ export class AudioEngine {
       lastMutation: null, // { param: 'eqLowGain', delta: 0.2, previousValue: 0 }
       optimizationTimer: 0 // V7: Section-Locked Optimization limit
     };
+    
+    this.setProfile('zenith');
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Profiles & Modes
+  // ──────────────────────────────────────────────────────────────────
+  setProfile(profileId) {
+    this.brainReport.profile = profileId;
+    const w = this._profileWidthHint(profileId);
+    
+    this._baselines = {
+      eqLowGain: 0, eqMidGain: 0, eqHighGain: 0, eqPresenceGain: 0,
+      satWet: 0, psychoBassWet: 0, widthL: w, widthR: w, reverbMix: 0.15,
+    };
+
+    if (profileId === 'hyper_immersive') {
+      this._baselines.reverbMix = 0.25;
+      this._baselines.satWet = 0.05;
+    } else if (profileId === 'concert') {
+      this._baselines.reverbMix = 0.30;
+      this._baselines.eqPresenceGain = 1.0;
+    } else if (profileId === 'cinema') {
+      this._baselines.reverbMix = 0.20;
+      this._baselines.eqLowGain = 2.0;
+      this._baselines.psychoBassWet = 0.4;
+    } else if (profileId === 'audiophile') {
+      this._baselines.reverbMix = 0.05;
+      this.orbitRadii = { vocals: 0.2, bass: 0, melody: 1.0, drums: 1.0 }; // Reduce orbit distance
+    } else if (profileId === 'basshead') {
+      this._baselines.eqLowGain = 3.5;
+      this._baselines.psychoBassWet = 0.6;
+    } else {
+      // Zenith
+      this._baselines.eqLowGain = 1.5;
+      this._baselines.eqPresenceGain = 1.0;
+      this._baselines.psychoBassWet = 0.2;
+    }
+    
+    if (profileId !== 'audiophile') {
+       this.orbitRadii = { vocals: 0.8, bass: 0, melody: 4, drums: 3.5 };
+    }
+
+    // Trigger V7 Optimizer to explore new profile space immediately
+    this._optimizerState.lastMutation = null;
+    this._optimizerState.optimizationTimer = performance.now() + 3000;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -471,8 +517,8 @@ export class AudioEngine {
       
       stem.panner = ctx.createPanner();
       stem.panner.panningModel = 'HRTF';
-      stem.panner.distanceModel = 'exponential';
-      stem.panner.refDistance = 1; stem.panner.maxDistance = 20; stem.panner.rolloffFactor = 1.5;
+      stem.panner.distanceModel = 'inverse';
+      stem.panner.refDistance = 1; stem.panner.maxDistance = 20; stem.panner.rolloffFactor = 0.2;
       stem.panner.coneInnerAngle = 360; stem.panner.coneOuterAngle = 360;
 
       const pos = this.defaultPositions[name];
@@ -558,7 +604,7 @@ export class AudioEngine {
   }
 
   _profileWidthHint(profile) {
-    const widths = { zenith: 1.85, hyper_immersive: 1.55, concert: 1.35, cinema: 1.45, audiophile: 1.1, basshead: 0.85 };
+    const widths = { zenith: 1.15, hyper_immersive: 1.30, concert: 1.20, cinema: 1.25, audiophile: 1.0, basshead: 1.05 };
     return widths[profile] ?? 1.0;
   }
 

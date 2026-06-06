@@ -45,12 +45,12 @@ let lastConsoleTick = 0;
 const PROFILE_LABELS = Object.fromEntries(PROFILE_OPTIONS.map((p) => [p.id, p.label]));
 
 const PROFILE_WIDTH = {
-  zenith: 1.85,
-  hyper_immersive: 1.95,
-  concert: 1.65,
-  cinema: 2.5,
-  audiophile: 1.25,
-  basshead: 1.2,
+  zenith: 1.15,
+  hyper_immersive: 1.30,
+  concert: 1.20,
+  cinema: 1.25,
+  audiophile: 1.0,
+  basshead: 1.05,
 };
 
 const DECODE_STAGES = [
@@ -562,6 +562,12 @@ function initApp() {
 
   window.addEventListener('auralisConsole', (e) => {
     if (e.detail?.lines) printConsoleLines(e.detail.lines);
+  });
+
+  window.addEventListener('profileChanged', (e) => {
+    if (engine && e.detail?.profile) {
+      engine.setProfile(e.detail.profile);
+    }
   });
 
   requestAnimationFrame(animationLoop);
