@@ -7,6 +7,7 @@ import {
   resetCrtDisplay,
 } from './components/crt-display.js';
 import { RendersPanel } from './components/renders-panel.js';
+import { applyRollingTitle, bindRollingTitleResize } from './components/rolling-title.js';
 import { TransportPlayer } from './components/transport-player.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
@@ -31,6 +32,7 @@ let decodeServerPercent = 0;
 let decodeDisplayPercent = 0;
 let decodeStatusText = 'INGESTING CASSETTE...';
 let canvasResizeObserver = null;
+let titleResizeObserver = null;
 let pendingCanvasRefresh = false;
 let activeJobId = null;
 let lastRenderedJobId = null;
@@ -133,17 +135,13 @@ function setDecodeFileName(name) {
   const tapeWindow = decodeFileName.closest('.decode-tape-window');
   if (!tapeWindow) return;
 
-  tapeWindow.classList.remove('is-marquee');
-  decodeFileName.style.removeProperty('--decode-marquee-distance');
-
-  requestAnimationFrame(() => {
-    const overflow = decodeFileName.scrollWidth - tapeWindow.clientWidth;
-    if (overflow > 4) {
-      tapeWindow.classList.add('is-marquee');
-      const duration = Math.min(14, Math.max(6, overflow / 12));
-      decodeFileName.style.setProperty('--decode-marquee-distance', `${overflow}px`);
-      decodeFileName.style.setProperty('--decode-marquee-duration', `${duration}s`);
-    }
+  applyRollingTitle(tapeWindow, decodeFileName, {
+    distanceVar: '--decode-marquee-distance',
+    durationVar: '--decode-marquee-duration',
+    minDuration: 6,
+    maxDuration: 14,
+    pxPerSec: 12,
+    varTarget: decodeFileName,
   });
 }
 
@@ -485,6 +483,7 @@ function initApp() {
   ThemeManager.init();
   LayoutScaler.init();
   bindCanvasResize();
+  bindTitleMarqueeResize();
   ThemeDropdown.init();
   ProfileDropdown.init();
   TransportPlayer.init({
@@ -812,23 +811,15 @@ function setCassetteTitle(name) {
   const display = (name || 'UNKNOWN').toUpperCase();
   fileNameSpan.textContent = display;
   fileNameSpan.title = name || '';
-  fileNameSpan.classList.remove('is-marquee');
-  titleWindow?.classList.remove('is-overflow', 'is-marquee');
-  titleWindow?.style.removeProperty('--marquee-distance');
-  titleWindow?.style.removeProperty('--marquee-duration');
 
   if (!titleWindow) return;
 
-  requestAnimationFrame(() => {
-    const overflow = fileNameSpan.scrollWidth - titleWindow.clientWidth;
-    if (overflow > 4) {
-      titleWindow.classList.add('is-overflow', 'is-marquee');
-      fileNameSpan.classList.add('is-marquee');
-      titleWindow.style.setProperty('--marquee-distance', `${overflow}px`);
-      const duration = Math.min(16, Math.max(7, overflow / 14));
-      titleWindow.style.setProperty('--marquee-duration', `${duration}s`);
-    }
-  });
+  applyRollingTitle(titleWindow, fileNameSpan);
+}
+
+function bindTitleMarqueeResize() {
+  if (!titleWindow || titleResizeObserver) return;
+  titleResizeObserver = bindRollingTitleResize(titleWindow, fileNameSpan);
 }
 
 async function loadCassette(file) {
@@ -1043,13 +1034,12 @@ function drawWaveform(buffer) {
     progress: getPlaybackProgress() ?? 0,
   };
 
-  if (engine.isPlaying && engine.analyser) {
-    const dataArray = new Uint8Array(engine.analyser.frequencyBinCount);
-    engine.analyser.getByteTimeDomainData(dataArray);
+  if (engine.isPlaying && engine.waveformAnalyser) {
+    const dataArray = new Uint8Array(engine.waveformAnalyser.fftSize);
+    engine.waveformAnalyser.getByteTimeDomainData(dataArray);
     const beatPhase = engine.getBeatPhase();
     opts.playing = true;
     opts.dataArray = dataArray;
-    opts.beatPhase = beatPhase;
     opts.beatPulse = 0.55 + 0.45 * Math.sin(beatPhase * Math.PI * 2);
   }
 

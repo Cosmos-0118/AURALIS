@@ -12,6 +12,7 @@ export class AudioEngine {
     this.source = null;
     this.masterGain = null;
     this.analyser = null;
+    this.waveformAnalyser = null;
     
     // Virtual Stems Nodes
     this.stems = {
@@ -121,6 +122,10 @@ export class AudioEngine {
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.75;
+
+    this.waveformAnalyser = ctx.createAnalyser();
+    this.waveformAnalyser.fftSize = 2048;
+    this.waveformAnalyser.smoothingTimeConstant = 0;
     
     // 2. EQ Block
     this.eqLow = ctx.createBiquadFilter();
@@ -198,6 +203,7 @@ export class AudioEngine {
     reverbOutputNode.connect(this.limiter);
     this.limiter.connect(this.masterGain);
     this.masterGain.connect(this.analyser);
+    this.masterGain.connect(this.waveformAnalyser);
     this.analyser.connect(ctx.destination);
 
     // 9. Set Up Stem Nodes

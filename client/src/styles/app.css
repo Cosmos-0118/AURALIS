@@ -1559,6 +1559,7 @@ body.renders-modal-open {
   flex-direction: column;
   gap: 3px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  min-width: 0;
 }
 
 .sticker-brand-row {
@@ -1592,6 +1593,7 @@ body.renders-modal-open {
   line-height: 1.2;
   border-bottom: 1.5px solid var(--theme-cassette-sticker-text);
   padding-bottom: 2px;
+  min-width: 0;
 }
 
 .sticker-song-title {
@@ -1600,36 +1602,39 @@ body.renders-modal-open {
   font-weight: var(--theme-font-weight-bold, 700);
   color: var(--theme-cassette-sticker-text);
   white-space: nowrap;
-  display: block;
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
+  vertical-align: top;
 }
 
 .sticker-title-window.is-overflow:not(.is-marquee) .sticker-song-title {
-  mask-image: linear-gradient(90deg, #000 85%, transparent);
+  mask-image: linear-gradient(90deg, #000 82%, transparent);
 }
 
 .sticker-title-window.is-marquee {
   mask-image: linear-gradient(
     90deg,
     transparent,
-    #000 10px,
-    #000 calc(100% - 10px),
+    #000 8px,
+    #000 calc(100% - 8px),
     transparent
   );
 }
 
 .sticker-song-title.is-marquee {
+  max-width: none;
   text-overflow: clip;
   overflow: visible;
-  display: inline-block;
   animation: title-marquee var(--marquee-duration, 10s) ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 @keyframes title-marquee {
-  0%, 15% { transform: translateX(0); }
-  85%, 100% { transform: translateX(calc(-1 * var(--marquee-distance, 0px))); }
+  0%, 18% { transform: translateX(0); }
+  82%, 100% { transform: translateX(calc(-1 * var(--marquee-distance, 0px))); }
 }
 
 /* Tape window */
