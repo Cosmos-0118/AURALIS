@@ -153,3 +153,60 @@ export function cancelJob(jobId, rendersDir) {
 
   return Boolean(active);
 }
+
+export function listRenderJobs(rendersDir) {
+  if (!fs.existsSync(rendersDir)) return [];
+
+  return fs
+    .readdirSync(rendersDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const workDir = path.join(rendersDir, entry.name);
+      const status = readJobStatus(workDir);
+      const outputPath = status?.output;
+      return {
+        jobId: entry.name,
+        status: status?.status ?? 'unknown',
+        originalName: status?.originalName ?? entry.name,
+        profile: status?.profile ?? status?.meta?.profile ?? null,
+        percent: status?.percent ?? 0,
+        message: status?.message ?? '',
+        updatedAt: status?.updatedAt ?? null,
+        hasOutput: Boolean(outputPath && fs.existsSync(outputPath)),
+      };
+    })
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+export function deleteRenderJob(rendersDir, jobId) {
+  if (!jobId || jobId.includes('..') || jobId.includes('/') || jobId.includes('\\')) {
+    return false;
+  }
+
+  cancelJob(jobId, rendersDir);
+
+  const workDir = path.join(rendersDir, jobId);
+  if (!fs.existsSync(workDir)) return false;
+
+  fs.rmSync(workDir, { recursive: true, force: true });
+  return true;
+}
+
+export function deleteRenderJobs(rendersDir, jobIds) {
+  let removed = 0;
+  const deleted = [];
+
+  for (const jobId of jobIds) {
+    if (deleteRenderJob(rendersDir, jobId)) {
+      removed += 1;
+      deleted.push(jobId);
+    }
+  }
+
+  return { removed, deleted };
+}
+
+export function clearAllRenders(rendersDir) {
+  const jobIds = listRenderJobs(rendersDir).map((job) => job.jobId);
+  return deleteRenderJobs(rendersDir, jobIds);
+}

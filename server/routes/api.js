@@ -6,11 +6,12 @@ import path from 'path';
 import {
   MAX_UPLOAD_BYTES,
   PYTHON,
+  VALID_PROFILES,
   rendersDir,
   resolveProfile,
   uploadDir,
 } from '../config.js';
-import { activeJobs, cancelJob, spawnPipeline } from '../jobs/runner.js';
+import { activeJobs, cancelJob, clearAllRenders, deleteRenderJobs, listRenderJobs, spawnPipeline } from '../jobs/runner.js';
 import { readJobStatus, writeJobStatus } from '../jobs/status.js';
 
 const storage = multer.diskStorage({
@@ -118,6 +119,32 @@ export function createApiRouter() {
     const jobId = req.params.id;
     cancelJob(jobId, rendersDir);
     res.json({ jobId, cancelled: true });
+  });
+
+  router.get('/renders', (_req, res) => {
+    const renders = listRenderJobs(rendersDir);
+    res.json({
+      count: renders.length,
+      activeJobs: activeJobs.size,
+      renders,
+    });
+  });
+
+  router.post('/renders/delete', (req, res) => {
+    const jobIds = req.body?.jobIds;
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.status(400).json({ error: 'jobIds array required.' });
+    }
+
+    const { removed, deleted } = deleteRenderJobs(rendersDir, jobIds);
+    console.log(`[*] Deleted ${removed} render job(s) from disk`);
+    res.json({ removed, deleted, activeJobs: activeJobs.size });
+  });
+
+  router.delete('/renders', (_req, res) => {
+    const { removed } = clearAllRenders(rendersDir);
+    console.log(`[*] Cleared ${removed} render job(s) from disk`);
+    res.json({ removed, activeJobs: activeJobs.size });
   });
 
   return router;

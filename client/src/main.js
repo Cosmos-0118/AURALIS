@@ -6,6 +6,7 @@ import {
   drawCrtWaveform,
   resetCrtDisplay,
 } from './components/crt-display.js';
+import { RendersPanel } from './components/renders-panel.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
 import { ProfileDropdown, PROFILE_OPTIONS } from './components/profile-dropdown.js';
@@ -26,6 +27,9 @@ let cassetteMetaBadge, cassetteBadgeRow, cassetteProfileBadge, cassetteGenreBadg
 let loadedCassette;
 let decodeProgressTimer = null;
 let activeJobId = null;
+let lastRenderedJobId = null;
+let lastTrackName = null;
+let downloadBtn;
 let trackMeta = null;
 let lastConsoleTick = 0;
 const PROFILE_LABELS = Object.fromEntries(PROFILE_OPTIONS.map((p) => [p.id, p.label]));
@@ -208,17 +212,24 @@ function initApp() {
   cassetteProfileBadge = document.getElementById('cassetteProfileBadge');
   cassetteGenreBadge = document.getElementById('cassetteGenreBadge');
   loadedCassette = document.getElementById('loadedCassette');
+  downloadBtn = document.getElementById('downloadBtn');
 
   ThemeManager.init();
   LayoutScaler.init();
   ThemeDropdown.init();
   ProfileDropdown.init();
+  RendersPanel.init({
+    onDeleted: handleRendersDeleted,
+  });
   bindEvents();
 
   setUploadActive(true);
   if (ledPower) ledPower.classList.add('active');
   refreshCanvas();
 
+  window.addEventListener('auralisConsole', (e) => {
+    if (e.detail?.lines) printConsoleLines(e.detail.lines);
+  });
   window.addEventListener('themeChanged', refreshCanvas);
   window.addEventListener('layoutScaled', refreshCanvas);
   window.addEventListener('resize', refreshCanvas);
@@ -276,6 +287,61 @@ function bindEvents() {
     masterVolume.addEventListener('input', (e) => {
       engine.setMasterVolume(parseFloat(e.target.value));
     });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      downloadRenderedTrack();
+    });
+  }
+}
+
+function handleRendersDeleted(deletedIds = []) {
+  if (lastRenderedJobId && deletedIds.includes(lastRenderedJobId)) {
+    lastRenderedJobId = null;
+    setDownloadAvailable(false);
+  }
+
+  if (activeJobId && deletedIds.includes(activeJobId)) {
+    activeJobId = null;
+    if (bayLoading && !bayLoading.classList.contains('hidden')) {
+      hideDecodeLoader();
+      bayIdle?.classList.remove('hidden');
+      setUploadActive(true);
+      ledProcess?.classList.remove('active');
+    }
+  }
+}
+
+function setDownloadAvailable(available) {
+  if (downloadBtn) downloadBtn.disabled = !available;
+}
+
+async function downloadRenderedTrack() {
+  if (!lastRenderedJobId) return;
+
+  try {
+    downloadBtn.disabled = true;
+    const blob = await downloadJobResult(lastRenderedJobId);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    const base = (lastTrackName || 'track').replace(/\.[^.]+$/, '');
+    anchor.download = `${base}_Auralis.wav`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    printConsoleLines([
+      'EXPORT COMPLETE.',
+      `${base.toUpperCase()}_AURALIS.WAV SAVED TO DISK.`,
+    ]);
+  } catch (err) {
+    printConsoleLines([
+      'EXPORT FAILED.',
+      String(err.message || err).toUpperCase(),
+    ]);
+    console.error('[Auralis] download failed:', err);
+  } finally {
+    setDownloadAvailable(Boolean(lastRenderedJobId));
   }
 }
 
@@ -482,7 +548,9 @@ async function loadCassette(file) {
     ]);
 
     updateDecodeProgress(2, 'UPLOADING TO PIPELINE...');
-    const { buffer, report: serverReport, meta: jobMeta } = await processViaBackend(file, profile);
+    const { buffer, report: serverReport, meta: jobMeta, jobId } = await processViaBackend(file, profile);
+    lastRenderedJobId = jobId;
+    lastTrackName = file.name;
 
     await finishDecodeProgress();
     hideDecodeLoader();
@@ -492,6 +560,7 @@ async function loadCassette(file) {
     bayLoaded?.classList.remove('hidden');
     setCassetteTitle(file.name);
     if (playBtn) playBtn.disabled = false;
+    setDownloadAvailable(true);
 
     const r = engine.brainReport;
     const meta = {
@@ -516,6 +585,7 @@ async function loadCassette(file) {
 
     drawWaveform(buffer);
     setupBrainConsoleSync();
+    RendersPanel.refresh();
 
     engine.onEndedCallback = () => {
       stopCassetteSpindles();
@@ -549,8 +619,11 @@ async function resetCassette() {
   engine.directPlayback = false;
   engine.orbiting = true;
   trackMeta = null;
+  lastRenderedJobId = null;
+  lastTrackName = null;
   lastConsoleTick = 0;
   resetCrtDisplay();
+  setDownloadAvailable(false);
 
   if (cassetteBadgeRow) cassetteBadgeRow.hidden = true;
   if (cassetteMetaBadge) cassetteMetaBadge.textContent = 'TYPE II · HI-FI';
@@ -567,7 +640,7 @@ async function resetCassette() {
   }
   ledActive?.classList.remove('active');
   ledProcess?.classList.remove('active');
-  if (progressBar) progressBar.style.width = '0%';
+  if (progressBar) progressBar.style.setProperty('--play-progress', '0');
 
   if (meterBass) meterBass.style.width = '0%';
   if (meterTreble) meterTreble.style.width = '0%';
@@ -594,7 +667,7 @@ async function resetCassette() {
   drawStaticScreen();
 }
 
-function drawWaveform(buffer, progress = null) {
+function drawWaveform(buffer) {
   if (!waveformCanvas || !buffer) return;
   const canvas = waveformCanvas;
   const ctx = canvas.getContext('2d');
@@ -602,7 +675,7 @@ function drawWaveform(buffer, progress = null) {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
   const lineScale = Math.max(1, w / 400);
-  drawCrtWaveform(ctx, w, h, buffer, getCanvasColors(), lineScale, { progress });
+  drawCrtWaveform(ctx, w, h, buffer, getCanvasColors(), lineScale);
 }
 
 function startCassetteSpindles() {
@@ -667,7 +740,7 @@ function animationLoop() {
 
   if (!engine.isPlaying) {
     if (engine.decodedBuffer) {
-      drawWaveform(engine.decodedBuffer, getPlaybackProgress());
+      drawWaveform(engine.decodedBuffer);
     } else {
       drawStaticScreen();
     }
@@ -683,7 +756,7 @@ function animationLoop() {
     const hundredths = Math.floor((elapsed % 1) * 100);
     const pad = (n) => (n < 10 ? '0' : '') + n;
     lcdTime.innerText = `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
-    if (progressBar) progressBar.style.width = `${progress * 100}%`;
+    if (progressBar) progressBar.style.setProperty('--play-progress', String(progress));
   }
 
   requestAnimationFrame(animationLoop);
@@ -708,7 +781,6 @@ function renderCRTDisplay() {
 
   drawCrtLive(ctx, w, h, engine.decodedBuffer, dataArray, getCanvasColors(), lineScale, {
     beatPulse,
-    progress: getPlaybackProgress(),
     phase: beatPhase,
   });
 }

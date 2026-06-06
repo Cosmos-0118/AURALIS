@@ -100,7 +100,19 @@
           <div class="lcd-inner">
             <div class="lcd-row header-row">
               <span class="lcd-status">SYS STAT: READY</span>
-              <span class="lcd-time" id="lcdTime">00:00.00</span>
+              <div class="lcd-header-actions">
+                <button
+                  type="button"
+                  class="lcd-action-btn"
+                  id="rendersPanelTrigger"
+                  aria-haspopup="dialog"
+                  aria-expanded="false"
+                  title="View saved renders"
+                >
+                  RENDERS
+                </button>
+                <span class="lcd-time" id="lcdTime">00:00.00</span>
+              </div>
             </div>
             
             <div class="lcd-console" id="lcdConsole">
@@ -300,9 +312,14 @@
                 <span class="deck-status-led" id="deckStatusLed" aria-hidden="true"></span>
                 <span class="deck-status-label">TAPE LOCK</span>
               </div>
-              <button class="eject-btn" id="clearFileBtn" title="Eject Cassette" type="button">
-                <span class="eject-btn-label">EJECT</span>
-              </button>
+              <div class="deck-transport-actions">
+                <button class="export-btn" id="downloadBtn" title="Download processed WAV" type="button" disabled>
+                  <span class="export-btn-label">EXPORT</span>
+                </button>
+                <button class="eject-btn" id="clearFileBtn" title="Eject Cassette" type="button">
+                  <span class="eject-btn-label">EJECT</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -362,6 +379,40 @@
       <div class="braun-compliance">AURALIS GMBH - FRANKFURT // MADE IN GERMANY</div>
       <div class="screw"></div>
     </div>
+    </div>
+  </div>
+
+  <div class="renders-modal" id="rendersModal" hidden aria-hidden="true">
+    <div class="renders-modal-backdrop" id="rendersModalBackdrop"></div>
+    <div class="renders-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rendersModalTitle">
+      <div class="renders-modal-header">
+        <h2 class="renders-modal-title" id="rendersModalTitle">SAVED RENDERS</h2>
+        <div class="renders-modal-header-actions">
+          <button type="button" class="renders-modal-icon-btn" id="rendersPanelRefresh" title="Refresh list" aria-label="Refresh render list">↻</button>
+          <button type="button" class="renders-modal-icon-btn renders-modal-close" id="rendersModalClose" aria-label="Close">×</button>
+        </div>
+      </div>
+
+      <div class="renders-modal-body">
+        <div class="renders-modal-loading" id="rendersModalLoading">LOADING RENDER LIBRARY...</div>
+        <div class="renders-modal-error hidden" id="rendersModalError">
+          <p class="renders-modal-error-text" id="rendersModalErrorText"></p>
+          <button type="button" class="renders-modal-btn" id="rendersModalRetry">RETRY</button>
+        </div>
+        <div class="renders-modal-list" id="rendersPanelList"></div>
+        <div class="renders-modal-empty hidden" id="rendersPanelEmpty">NO SAVED RENDERS ON DISK</div>
+      </div>
+
+      <div class="renders-modal-footer">
+        <label class="renders-modal-select-all">
+          <input type="checkbox" id="rendersSelectAll" disabled>
+          <span>SELECT ALL</span>
+        </label>
+        <div class="renders-modal-footer-actions">
+          <button type="button" class="renders-modal-btn" id="rendersDeleteSelected" disabled>DELETE SELECTED</button>
+          <button type="button" class="renders-modal-btn renders-modal-btn-danger" id="rendersDeleteAll" disabled>DELETE ALL</button>
+        </div>
+      </div>
     </div>
   </div>
 

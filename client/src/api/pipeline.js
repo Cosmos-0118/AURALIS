@@ -5,6 +5,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function readApiError(response, fallback) {
+  try {
+    const err = await response.json();
+    return err.error || err.detail || fallback;
+  } catch {
+    const text = (await response.text()).trim();
+    if (!text || text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
+      return fallback;
+    }
+    return text.slice(0, 180);
+  }
+}
+
 export async function submitJob(file, profile) {
   const formData = new FormData();
   formData.append('audio', file);
@@ -77,4 +90,35 @@ export async function cancelJob(jobId) {
   } catch {
     /* best effort */
   }
+}
+
+export async function fetchRenderCache() {
+  const response = await fetch(`${API_BASE}/api/renders`);
+  if (!response.ok) {
+    const fallback = response.status === 404
+      ? 'Render API not found — restart the backend server.'
+      : `Render cache query failed (${response.status})`;
+    throw new Error(await readApiError(response, fallback));
+  }
+  return response.json();
+}
+
+export async function deleteSelectedRenders(jobIds) {
+  const response = await fetch(`${API_BASE}/api/renders/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobIds }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, `Delete renders failed (${response.status})`));
+  }
+  return response.json();
+}
+
+export async function clearAllRenders() {
+  const response = await fetch(`${API_BASE}/api/renders`, { method: 'DELETE' });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, `Clear renders failed (${response.status})`));
+  }
+  return response.json();
 }
