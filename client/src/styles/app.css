@@ -2224,3 +2224,57 @@ body.renders-modal-open {
   border-radius: 2px;
 }
 
+/* ──────────────────────────────────────────────────────────────────
+ * V5 Diagnostics Overlay
+ * ────────────────────────────────────────────────────────────────── */
+.diagnostics-overlay {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 260px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--theme-danger);
+  border-radius: 4px;
+  color: var(--theme-text-inverse);
+  font-family: var(--theme-font-mono);
+  font-size: 10px;
+  z-index: 9999;
+  padding: 12px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.diagnostics-overlay.hidden {
+  display: none;
+}
+
+.diag-header {
+  color: var(--theme-warning);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.diag-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diag-item {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.1);
+  padding-bottom: 2px;
+}
+
+.diag-label {
+  color: var(--theme-text-muted);
+}
+
+.diag-val {
+  font-weight: bold;
+}

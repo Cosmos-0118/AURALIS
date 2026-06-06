@@ -233,7 +233,30 @@ function finishDecodeProgress() {
   decodeServerPercent = 100;
   decodeDisplayPercent = 100;
   renderDecodeProgress(100, 'DECODE COMPLETE // LOCKED');
+  
+  // V5 Diagnostics Hotkey setup
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'd' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+      toggleDiagnostics();
+    }
+  });
+  
   return new Promise((resolve) => setTimeout(resolve, 450));
+}
+
+function toggleDiagnostics() {
+  const diagEl = document.getElementById('diagnosticsOverlay');
+  if (!diagEl) return;
+  
+  diagEl.classList.toggle('hidden');
+  if (!diagEl.classList.contains('hidden')) {
+    const report = engine.brainReport || {};
+    const fields = ['bpm', 'genre', 'mood', 'profile', 'ai_score'];
+    fields.forEach(f => {
+      const el = document.getElementById(`diag-${f}`);
+      if (el) el.textContent = String(report[f] ?? 'N/A').toUpperCase();
+    });
+  }
 }
 
 function getCanvasColors() {
@@ -1128,6 +1151,33 @@ function setupBrainConsoleSync() {
     if (valEnergy) valEnergy.innerText = `${Math.min(100, Math.round(currentRMS * 250))}%`;
     const energyPct = Math.min(1.0, currentRMS * 2.2);
     const energyAngle = energyPct * 270 - 135;
+    
+    // V5: Diagnostics Overlay Updates
+    const diagEl = document.getElementById('diagnosticsOverlay');
+    if (diagEl && !diagEl.classList.contains('hidden')) {
+      document.getElementById('diagSection').textContent = report.activeSection;
+      document.getElementById('diagConfidence').textContent = report.sectionConfidence.toFixed(2);
+      document.getElementById('diagLufs').textContent = `${report.shortTermLUFS} / ${report.momentaryLUFS}`;
+      document.getElementById('diagQuality').textContent = `${report.originalScore} -> ${report.qualityScore}`;
+      document.getElementById('diagStemConf').textContent = report.stemConfidence.toFixed(2);
+      document.getElementById('diagCpu').textContent = report.cpuMs.toFixed(1);
+      document.getElementById('diagWidth').textContent = report.stereoWidthCoeff.toFixed(2);
+      document.getElementById('diagBass').textContent = (report.bassBoostDb > 0 ? '+' : '') + report.bassBoostDb;
+      document.getElementById('diagOrbit').textContent = report.orbitEnabled ? 'ON' : 'OFF';
+      document.getElementById('diagPsycho').textContent = report.psychoBassEnabled ? 'ON' : 'OFF';
+      
+      // Color-code CPU
+      const cpuEl = document.getElementById('diagCpu');
+      if (report.cpuMs > 10) cpuEl.style.color = 'var(--theme-danger)';
+      else if (report.cpuMs > 6) cpuEl.style.color = 'var(--theme-warning)';
+      else cpuEl.style.color = 'var(--theme-success)';
+      
+      // V7 Color-code Quality (A/B comparison)
+      const qualEl = document.getElementById('diagQuality');
+      if (report.qualityScore < report.originalScore - 2) qualEl.style.color = 'var(--theme-danger)'; // We made it noticeably worse
+      else if (report.qualityScore < report.originalScore) qualEl.style.color = 'var(--theme-warning)'; // We made it slightly worse
+      else qualEl.style.color = 'var(--theme-success)'; // We improved it or kept it equal
+    }
     if (dialMarkerEnergy) {
       dialMarkerEnergy.style.transform = `translate(-50%, -50%) rotate(${energyAngle}deg)`;
     }

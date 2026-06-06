@@ -14,6 +14,24 @@
 <body>
   <canvas id="ambientBg" class="ambient-bg" aria-hidden="true"></canvas>
   <div class="app-stage">
+    
+    <!-- V5: Diagnostics Overlay -->
+    <div id="diagnosticsOverlay" class="diagnostics-overlay hidden" aria-hidden="true">
+      <div class="diag-header">ENGINE V5 DIAGNOSTICS</div>
+      <div class="diag-grid">
+        <div class="diag-item"><span class="diag-label">SECTION</span><span class="diag-val" id="diagSection">STANDBY</span></div>
+        <div class="diag-item"><span class="diag-label">CONFIDENCE</span><span class="diag-val" id="diagConfidence">0.00</span></div>
+        <div class="diag-item"><span class="diag-label">LUFS (M/S)</span><span class="diag-val" id="diagLufs">- / -</span></div>
+        <div class="diag-item"><span class="diag-label">A/B SCORE</span><span class="diag-val" id="diagQuality">100 -> 100</span></div>
+        <div class="diag-item"><span class="diag-label">STEM CONF.</span><span class="diag-val" id="diagStemConf">1.00</span></div>
+        <div class="diag-item"><span class="diag-label">CPU (ms)</span><span class="diag-val" id="diagCpu">0.0</span></div>
+        <div class="diag-item"><span class="diag-label">WIDTH (x)</span><span class="diag-val" id="diagWidth">1.00</span></div>
+        <div class="diag-item"><span class="diag-label">BASS (dB)</span><span class="diag-val" id="diagBass">0.0</span></div>
+        <div class="diag-item"><span class="diag-label">ORBIT</span><span class="diag-val" id="diagOrbit">ON</span></div>
+        <div class="diag-item"><span class="diag-label">P. BASS</span><span class="diag-val" id="diagPsycho">ON</span></div>
+      </div>
+    </div>
+
     <div class="device-body">
     <!-- Top Faceplate Screws and Ventilation -->
     <div class="faceplate-top">
