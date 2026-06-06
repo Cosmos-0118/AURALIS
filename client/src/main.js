@@ -1,6 +1,11 @@
 import { cancelJob, downloadJobResult, pollJob, submitJob } from './api/pipeline.js';
 import { AudioEngine } from './audio/engine.js';
-import { AiScorePanel } from './components/ai-score-panel.js';
+import {
+  drawCrtLive,
+  drawCrtStatic,
+  drawCrtWaveform,
+  resetCrtDisplay,
+} from './components/crt-display.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
 import { ProfileDropdown, PROFILE_OPTIONS } from './components/profile-dropdown.js';
@@ -19,13 +24,10 @@ let valMeterBass, valMeterTreble, valMeterOrbit, valMeterWidth;
 let dialMarkerBpm, dialMarkerEnergy, valBpm, valEnergy;
 let cassetteMetaBadge, cassetteBadgeRow, cassetteProfileBadge, cassetteGenreBadge;
 let loadedCassette;
-let aiScorePanel;
-
 let decodeProgressTimer = null;
 let activeJobId = null;
 let trackMeta = null;
 let lastConsoleTick = 0;
-
 const PROFILE_LABELS = Object.fromEntries(PROFILE_OPTIONS.map((p) => [p.id, p.label]));
 
 const PROFILE_WIDTH = {
@@ -150,10 +152,20 @@ function finishDecodeProgress() {
 function getCanvasColors() {
   return {
     glow: ThemeManager.getToken('--theme-crt-glow'),
+    dim: ThemeManager.getToken('--theme-crt-dim'),
     shadow: ThemeManager.getToken('--theme-crt-shadow'),
     decay: ThemeManager.getToken('--theme-crt-bg-decay'),
-    staticLine: ThemeManager.getToken('--theme-crt-glow'),
   };
+}
+
+function getPlaybackProgress() {
+  if (!engine.decodedBuffer) return null;
+  const dur = engine.decodedBuffer.duration;
+  if (dur <= 0) return null;
+  const elapsed = engine.isPlaying && engine.ctx
+    ? engine.ctx.currentTime - engine.startTime
+    : engine.pauseOffset;
+  return Math.min(1, Math.max(0, elapsed / dur));
 }
 
 function initApp() {
@@ -195,7 +207,6 @@ function initApp() {
   cassetteBadgeRow = document.getElementById('cassetteBadgeRow');
   cassetteProfileBadge = document.getElementById('cassetteProfileBadge');
   cassetteGenreBadge = document.getElementById('cassetteGenreBadge');
-  aiScorePanel = new AiScorePanel(document.getElementById('zenithScorePanel'));
   loadedCassette = document.getElementById('loadedCassette');
 
   ThemeManager.init();
@@ -321,17 +332,7 @@ function drawStaticScreen() {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
   const lineScale = Math.max(1, w / 400);
-  const colors = getCanvasColors();
-
-  ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = colors.staticLine;
-  ctx.globalAlpha = 0.15;
-  ctx.lineWidth = 1.5 * lineScale;
-  ctx.beginPath();
-  ctx.moveTo(0, h / 2);
-  ctx.lineTo(w, h / 2);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  drawCrtStatic(ctx, w, h, getCanvasColors(), lineScale);
 }
 
 function formatBpm(bpm) {
@@ -382,11 +383,6 @@ function applyCassetteBadges(meta) {
 function applyTrackMeta(meta) {
   trackMeta = meta;
   applyCassetteBadges(meta);
-  aiScorePanel?.update(meta.ai_score, {
-    safeguard: meta.safeguard
-      ? { ...meta.safeguard, safeguard_message: meta.safeguard_message }
-      : null,
-  });
   applyBpmTiming(meta.bpm);
 
   if (valBpm) valBpm.innerText = formatBpm(meta.bpm);
@@ -503,20 +499,10 @@ async function loadCassette(file) {
       genre: serverReport.genre ?? r.genre,
       mood: serverReport.mood ?? r.mood,
       profile: serverReport.profile || profile,
-      ai_score: jobMeta?.ai_score ?? serverReport.ai_score ?? null,
       safeguard: jobMeta?.safeguard ?? serverReport.safeguard ?? null,
       safeguard_message: jobMeta?.safeguard_message ?? serverReport.safeguard_message ?? null,
     };
     applyTrackMeta(meta);
-
-    const scoreLines = meta.ai_score
-      ? [
-          `IMMERSION: ${meta.ai_score.immersion}`,
-          `CLARITY: ${meta.ai_score.clarity}`,
-          `PUNCH: ${meta.ai_score.punch}`,
-          `WARMTH: ${meta.ai_score.warmth}`,
-        ]
-      : [];
 
     printConsoleLines([
       'PIPELINE RENDER COMPLETE.',
@@ -524,7 +510,6 @@ async function loadCassette(file) {
       `GENRE DETECTED: ${(meta.genre || r.genre).toUpperCase()}`,
       `DYNAMIC REGIME: ${(meta.mood || r.mood).toUpperCase()}`,
       `BPM CALCULATED: ${formatBpm(meta.bpm)} BEATS/MIN`,
-      ...scoreLines,
       meta.safeguard_message || null,
       'SERVER MIX LOADED // DIRECT PLAYBACK.',
     ].filter(Boolean));
@@ -565,8 +550,8 @@ async function resetCassette() {
   engine.orbiting = true;
   trackMeta = null;
   lastConsoleTick = 0;
+  resetCrtDisplay();
 
-  aiScorePanel?.hide();
   if (cassetteBadgeRow) cassetteBadgeRow.hidden = true;
   if (cassetteMetaBadge) cassetteMetaBadge.textContent = 'TYPE II · HI-FI';
   if (loadedCassette) loadedCassette.classList.remove('is-beat-pulse');
@@ -609,7 +594,7 @@ async function resetCassette() {
   drawStaticScreen();
 }
 
-function drawWaveform(buffer) {
+function drawWaveform(buffer, progress = null) {
   if (!waveformCanvas || !buffer) return;
   const canvas = waveformCanvas;
   const ctx = canvas.getContext('2d');
@@ -617,35 +602,7 @@ function drawWaveform(buffer) {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
   const lineScale = Math.max(1, w / 400);
-
-  ctx.clearRect(0, 0, w, h);
-
-  const data = buffer.getChannelData(0);
-  const step = Math.ceil(data.length / w);
-  const amp = h / 2.5;
-  const colors = getCanvasColors();
-
-  ctx.strokeStyle = colors.glow;
-  ctx.lineWidth = 1 * lineScale;
-  ctx.shadowBlur = 6 * lineScale;
-  ctx.shadowColor = colors.shadow;
-
-  ctx.beginPath();
-  for (let i = 0; i < w; i++) {
-    let min = 1.0;
-    let max = -1.0;
-    for (let j = 0; j < step; j++) {
-      const val = data[i * step + j];
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    const y1 = (1 + min) * amp + (h - amp * 2) / 2;
-    const y2 = (1 + max) * amp + (h - amp * 2) / 2;
-    ctx.moveTo(i, y1);
-    ctx.lineTo(i, y2);
-  }
-  ctx.stroke();
-  ctx.shadowBlur = 0;
+  drawCrtWaveform(ctx, w, h, buffer, getCanvasColors(), lineScale, { progress });
 }
 
 function startCassetteSpindles() {
@@ -707,20 +664,26 @@ function animationLoop() {
     if (engine.orbiting && engine.isPlaying) engine.orbitTick();
     if (engine.isPlaying) engine.processAutomaticBraintick();
   }
-  renderCRTDisplay();
 
-  if (engine.isPlaying && engine.decodedBuffer && lcdTime) {
-    const elapsed = engine.ctx.currentTime - engine.startTime;
-    const dur = engine.decodedBuffer.duration;
-
-    if (elapsed < dur) {
-      const minutes = Math.floor(elapsed / 60);
-      const seconds = Math.floor(elapsed % 60);
-      const hundredths = Math.floor((elapsed % 1) * 100);
-      const pad = (n) => (n < 10 ? '0' : '') + n;
-      lcdTime.innerText = `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
-      if (progressBar) progressBar.style.width = `${(elapsed / dur) * 100}%`;
+  if (!engine.isPlaying) {
+    if (engine.decodedBuffer) {
+      drawWaveform(engine.decodedBuffer, getPlaybackProgress());
+    } else {
+      drawStaticScreen();
     }
+  } else {
+    renderCRTDisplay();
+  }
+
+  const progress = getPlaybackProgress();
+  if (progress != null && lcdTime && engine.decodedBuffer) {
+    const elapsed = progress * engine.decodedBuffer.duration;
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = Math.floor(elapsed % 60);
+    const hundredths = Math.floor((elapsed % 1) * 100);
+    const pad = (n) => (n < 10 ? '0' : '') + n;
+    lcdTime.innerText = `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
+    if (progressBar) progressBar.style.width = `${progress * 100}%`;
   }
 
   requestAnimationFrame(animationLoop);
@@ -739,44 +702,15 @@ function renderCRTDisplay() {
   const bufferLength = engine.analyser.frequencyBinCount;
   const dataArray = new Uint8Array(bufferLength);
   engine.analyser.getByteTimeDomainData(dataArray);
-  const colors = getCanvasColors();
 
   const beatPhase = engine.getBeatPhase();
   const beatPulse = 0.6 + 0.4 * Math.sin(beatPhase * Math.PI * 2);
-  const scrollShift = Math.floor(beatPhase * 24);
 
-  ctx.fillStyle = colors.decay;
-  ctx.fillRect(0, 0, w, h);
-
-  ctx.strokeStyle = colors.glow;
-  ctx.lineWidth = (1.5 + beatPulse * 1.2) * lineScale;
-  ctx.shadowBlur = (6 + beatPulse * 10) * lineScale;
-  ctx.shadowColor = colors.shadow;
-
-  ctx.beginPath();
-  const sliceWidth = w / bufferLength;
-  let x = 0;
-  for (let i = 0; i < bufferLength; i++) {
-    const idx = (i + scrollShift) % bufferLength;
-    const sample = (dataArray[idx] - 128) / 128;
-    const y = h / 2 + sample * (h * 0.38 * beatPulse);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-    x += sliceWidth;
-  }
-  ctx.stroke();
-
-  if (engine.directPlayback) {
-    ctx.globalAlpha = 0.25 + beatPulse * 0.2;
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.lineWidth = 1 * lineScale;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
-  ctx.shadowBlur = 0;
+  drawCrtLive(ctx, w, h, engine.decodedBuffer, dataArray, getCanvasColors(), lineScale, {
+    beatPulse,
+    progress: getPlaybackProgress(),
+    phase: beatPhase,
+  });
 }
 
 if (document.readyState === 'loading') {
