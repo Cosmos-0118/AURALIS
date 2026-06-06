@@ -1,6 +1,6 @@
 :root {
   --layout-width: 860px;
-  --layout-scale: clamp(0.35, calc((100vw - 48px) / 860px), 1.4);
+  --layout-scale: 1; /* Scaler sets this dynamically */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
@@ -114,7 +114,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  overflow: auto;
+  overflow: hidden;
 }
 button,
 input,

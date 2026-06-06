@@ -16,8 +16,13 @@ export class LayoutScaler {
   static update() {
     const availW = Math.max(1, window.innerWidth - PADDING);
     const availH = Math.max(1, window.innerHeight - PADDING);
-    const scaleW = availW / DESIGN_WIDTH;
-    const scaleH = availH / DESIGN_HEIGHT;
+    
+    const el = document.querySelector('.device-body');
+    const layoutW = el ? el.offsetWidth : DESIGN_WIDTH;
+    const layoutH = el ? el.offsetHeight : DESIGN_HEIGHT;
+
+    const scaleW = availW / layoutW;
+    const scaleH = availH / layoutH;
     const scale = Math.min(Math.max(Math.min(scaleW, scaleH), MIN_SCALE), MAX_SCALE);
 
     document.documentElement.style.setProperty('--layout-scale', String(scale));

@@ -202,8 +202,8 @@ export const themes = {
       '--theme-surface-overlay': 'rgba(255, 0, 127, 0.08)',
 
       '--theme-text-primary': '#00f0ff',
-      '--theme-text-secondary': '#a30052',
-      '--theme-text-muted': '#6b0040',
+      '--theme-text-secondary': '#ff007f',
+      '--theme-text-muted': '#d6006b',
       '--theme-text-accent': '#ff007f',
       '--theme-text-inverse': '#050406',
       '--theme-font-sans': "'Space Mono', monospace",
