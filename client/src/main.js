@@ -1,7 +1,9 @@
 import { cancelJob, downloadJobResult, pollJob, submitJob } from './api/pipeline.js';
 import { AudioEngine } from './audio/engine.js';
+import { AiScorePanel } from './components/ai-score-panel.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
+import { ProfileDropdown, PROFILE_OPTIONS } from './components/profile-dropdown.js';
 import { ThemeDropdown } from './components/theme-dropdown.js';
 
 const engine = new AudioEngine();
@@ -15,26 +17,19 @@ let ledPower, ledProcess, ledActive;
 let meterBass, meterTreble, meterOrbit, meterWidth;
 let valMeterBass, valMeterTreble, valMeterOrbit, valMeterWidth;
 let dialMarkerBpm, dialMarkerEnergy, valBpm, valEnergy;
-let profileSelect;
 let cassetteMetaBadge, cassetteBadgeRow, cassetteProfileBadge, cassetteGenreBadge;
 let loadedCassette;
+let aiScorePanel;
 
 let decodeProgressTimer = null;
 let activeJobId = null;
 let trackMeta = null;
 let lastConsoleTick = 0;
 
-const PROFILE_LABELS = {
-  god: 'GOD MODE',
-  hyper_immersive: 'HYPER IMMERSIVE',
-  concert: 'CONCERT',
-  cinema: 'CINEMA',
-  audiophile: 'AUDIOPHILE',
-  basshead: 'BASSHEAD',
-};
+const PROFILE_LABELS = Object.fromEntries(PROFILE_OPTIONS.map((p) => [p.id, p.label]));
 
 const PROFILE_WIDTH = {
-  god: 1.85,
+  zenith: 1.85,
   hyper_immersive: 1.95,
   concert: 1.65,
   cinema: 2.5,
@@ -102,7 +97,7 @@ function stageTextForProgress(percent) {
 }
 
 function getSelectedProfile() {
-  return profileSelect?.value || import.meta.env.VITE_AURALIS_PROFILE || 'god';
+  return ProfileDropdown.getValue();
 }
 
 async function processViaBackend(file, profile) {
@@ -127,11 +122,14 @@ async function processViaBackend(file, profile) {
     genre: meta.genre || 'Server Rendered',
     mood: meta.mood || 'Pipeline Mix',
     profile: meta.profile || profile,
+    ai_score: meta.ai_score || null,
+    safeguard: meta.safeguard || null,
+    safeguard_message: meta.safeguard_message || null,
   };
 
   const arrayBuffer = await blob.arrayBuffer();
   const buffer = await engine.loadProcessedAudio(arrayBuffer, report);
-  return { buffer, report, jobId };
+  return { buffer, report, meta, jobId };
 }
 
 async function cancelActiveJob() {
@@ -193,16 +191,17 @@ function initApp() {
   dialMarkerEnergy = document.getElementById('dialMarkerEnergy');
   valBpm = document.getElementById('valBpm');
   valEnergy = document.getElementById('valEnergy');
-  profileSelect = document.getElementById('profileSelect');
   cassetteMetaBadge = document.getElementById('cassetteMetaBadge');
   cassetteBadgeRow = document.getElementById('cassetteBadgeRow');
   cassetteProfileBadge = document.getElementById('cassetteProfileBadge');
   cassetteGenreBadge = document.getElementById('cassetteGenreBadge');
+  aiScorePanel = new AiScorePanel(document.getElementById('zenithScorePanel'));
   loadedCassette = document.getElementById('loadedCassette');
 
   ThemeManager.init();
   LayoutScaler.init();
   ThemeDropdown.init();
+  ProfileDropdown.init();
   bindEvents();
 
   setUploadActive(true);
@@ -383,6 +382,11 @@ function applyCassetteBadges(meta) {
 function applyTrackMeta(meta) {
   trackMeta = meta;
   applyCassetteBadges(meta);
+  aiScorePanel?.update(meta.ai_score, {
+    safeguard: meta.safeguard
+      ? { ...meta.safeguard, safeguard_message: meta.safeguard_message }
+      : null,
+  });
   applyBpmTiming(meta.bpm);
 
   if (valBpm) valBpm.innerText = formatBpm(meta.bpm);
@@ -482,7 +486,7 @@ async function loadCassette(file) {
     ]);
 
     updateDecodeProgress(2, 'UPLOADING TO PIPELINE...');
-    const { buffer, report: serverReport } = await processViaBackend(file, profile);
+    const { buffer, report: serverReport, meta: jobMeta } = await processViaBackend(file, profile);
 
     await finishDecodeProgress();
     hideDecodeLoader();
@@ -499,8 +503,20 @@ async function loadCassette(file) {
       genre: serverReport.genre ?? r.genre,
       mood: serverReport.mood ?? r.mood,
       profile: serverReport.profile || profile,
+      ai_score: jobMeta?.ai_score ?? serverReport.ai_score ?? null,
+      safeguard: jobMeta?.safeguard ?? serverReport.safeguard ?? null,
+      safeguard_message: jobMeta?.safeguard_message ?? serverReport.safeguard_message ?? null,
     };
     applyTrackMeta(meta);
+
+    const scoreLines = meta.ai_score
+      ? [
+          `IMMERSION: ${meta.ai_score.immersion}`,
+          `CLARITY: ${meta.ai_score.clarity}`,
+          `PUNCH: ${meta.ai_score.punch}`,
+          `WARMTH: ${meta.ai_score.warmth}`,
+        ]
+      : [];
 
     printConsoleLines([
       'PIPELINE RENDER COMPLETE.',
@@ -508,8 +524,10 @@ async function loadCassette(file) {
       `GENRE DETECTED: ${(meta.genre || r.genre).toUpperCase()}`,
       `DYNAMIC REGIME: ${(meta.mood || r.mood).toUpperCase()}`,
       `BPM CALCULATED: ${formatBpm(meta.bpm)} BEATS/MIN`,
+      ...scoreLines,
+      meta.safeguard_message || null,
       'SERVER MIX LOADED // DIRECT PLAYBACK.',
-    ]);
+    ].filter(Boolean));
 
     drawWaveform(buffer);
     setupBrainConsoleSync();
@@ -548,6 +566,7 @@ async function resetCassette() {
   trackMeta = null;
   lastConsoleTick = 0;
 
+  aiScorePanel?.hide();
   if (cassetteBadgeRow) cassetteBadgeRow.hidden = true;
   if (cassetteMetaBadge) cassetteMetaBadge.textContent = 'TYPE II · HI-FI';
   if (loadedCassette) loadedCassette.classList.remove('is-beat-pulse');

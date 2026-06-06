@@ -2,7 +2,7 @@
 Auralis CLI — headless audio pipeline.
 
 Usage:
-    python -m auralis process song.mp3 --profile god -o out.wav
+    python -m auralis process song.mp3 --profile zenith -o out.wav
     python -m auralis separate song.mp3
     python -m auralis analyze song.mp3
 """
@@ -16,9 +16,19 @@ import sys
 from pathlib import Path
 
 from auralis import __version__
-from auralis.types import OUTPUT_PROFILES, PipelineResult
+from auralis.types import OUTPUT_PROFILES, PipelineResult, resolve_profile
 
 logger = logging.getLogger(__name__)
+
+
+def _profile_arg(value: str) -> str:
+    """Argparse type — accepts legacy aliases (e.g. god → zenith)."""
+    resolved = resolve_profile(value.strip().lower())
+    if resolved not in OUTPUT_PROFILES:
+        raise argparse.ArgumentTypeError(
+            f"invalid profile '{value}' (choose from {', '.join(OUTPUT_PROFILES)})"
+        )
+    return resolved
 
 
 def _default_work_dir(input_path: Path) -> Path:
@@ -80,15 +90,16 @@ def cmd_process(args: argparse.Namespace) -> int:
     from auralis.llm import enhance_plan_with_llm
 
     input_path = Path(args.input).resolve()
+    profile_name = resolve_profile(args.profile)
     work_dir = Path(args.work_dir).resolve() if args.work_dir else _default_work_dir(input_path)
     output_path = (
         Path(args.output).resolve()
         if args.output
-        else work_dir / f"{input_path.stem}.{args.profile}.wav"
+        else work_dir / f"{input_path.stem}.{profile_name}.wav"
     )
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("=== AURALIS PIPELINE: %s ===", input_path.name)
+    logger.info("=== AURALIS PIPELINE: %s (profile=%s) ===", input_path.name, profile_name)
     logger.info("Work dir: %s", work_dir)
 
     try:
@@ -111,24 +122,50 @@ def cmd_process(args: argparse.Namespace) -> int:
         stage(work_dir, "analyzing", 78, "ANALYSIS COMPLETE")
 
         stage(work_dir, "rendering", 82, "BUILDING RENDER PLAN...")
-        logger.info("[3/4] Building render plan (profile=%s)...", args.profile)
+        logger.info("[3/4] Building render plan (profile=%s)...", profile_name)
         if args.llm:
-            plan = enhance_plan_with_llm(profile, args.profile, provider=args.llm_provider)
+            plan = enhance_plan_with_llm(profile, profile_name, provider=args.llm_provider)
         else:
-            plan = build_render_plan(profile, args.profile)
+            plan = build_render_plan(profile, profile_name)
 
         plan_path = work_dir / "render_plan.json"
         plan_path.write_text(json.dumps(plan.to_dict(), indent=2), encoding="utf-8")
 
         stage(work_dir, "rendering", 88, "PEDALBOARD DSP RENDER...")
         logger.info("[4/4] Applying DSP and mixing down...")
-        render(
+        from auralis.analysis.scoring import compute_ai_score
+
+        outcome = render(
             stems,
             plan,
             output_path,
             work_dir=work_dir,
             keep_stems=args.keep_stems,
+            source_path=input_path,
         )
+
+        ai_score = compute_ai_score(
+            output=outcome.mastered,
+            drums=outcome.stem_buffers["drums"],
+            plan=plan,
+            safeguard=outcome.safeguard,
+            source_path=input_path,
+            sample_rate=outcome.sample_rate,
+        )
+
+        meta = {
+            "bpm": profile.bpm,
+            "genre": profile.genre_hint,
+            "mood": profile.mood_hint,
+            "profile": profile_name,
+            "safeguard": outcome.safeguard.to_dict(),
+            "ai_score": ai_score.to_dict(),
+        }
+        if outcome.safeguard.tripped:
+            meta["safeguard_message"] = (
+                f"Phase correlation {outcome.safeguard.mix_correlation:.2f} — "
+                f"width rollback {int((outcome.safeguard.rollback_factor or 0.7) * 100)}% applied"
+            )
 
         write_status(
             work_dir,
@@ -136,12 +173,7 @@ def cmd_process(args: argparse.Namespace) -> int:
             percent=100,
             message="DECODE COMPLETE // LOCKED",
             output=str(output_path),
-            meta={
-                "bpm": profile.bpm,
-                "genre": profile.genre_hint,
-                "mood": profile.mood_hint,
-                "profile": args.profile,
-            },
+            meta=meta,
         )
 
         result = PipelineResult(
@@ -157,7 +189,7 @@ def cmd_process(args: argparse.Namespace) -> int:
             "version": __version__,
             "input": str(result.input_path),
             "output": str(result.output_path),
-            "profile": args.profile,
+            "profile": profile_name,
             "bpm": profile.bpm,
             "genre": profile.genre_hint,
             "stems": stems.as_dict(),
@@ -202,9 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_process.add_argument(
         "--profile", "-p",
+        type=_profile_arg,
         default="audiophile",
-        choices=OUTPUT_PROFILES,
-        help="Output mode preset (default: audiophile)",
+        help="Output mode preset (default: audiophile; legacy: god → zenith)",
     )
     p_process.add_argument("--work-dir", help="Scratch directory for stems and analysis JSON")
     p_process.add_argument("--model", default="htdemucs", help="Demucs model name (default: htdemucs)")
@@ -231,7 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_an = sub.add_parser("analyze", help="Librosa analysis only")
     p_an.add_argument("input", help="Input audio file")
     p_an.add_argument("-o", "--output", help="Write profile JSON to this path")
-    p_an.add_argument("--profile", choices=OUTPUT_PROFILES, help="Also emit a rule-based render plan")
+    p_an.add_argument(
+        "--profile",
+        type=_profile_arg,
+        help="Also emit a rule-based render plan (legacy: god → zenith)",
+    )
     p_an.set_defaults(func=cmd_analyze)
 
     p_clean = sub.add_parser("clean", help="Remove cached stems from a work directory")

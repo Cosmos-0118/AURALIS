@@ -94,16 +94,27 @@ def _plan_from_llm_json(
     try:
         from auralis.types import StemEffectParams
 
+        from auralis.dsp.envelopes import coerce_envelope
+
         stem_params = {}
         for name, params in data.get("stem_params", {}).items():
-            stem_params[name] = StemEffectParams(stem=name, **params)
+            clean = dict(params)
+            for env_key in ("width_envelope", "reverb_mix_envelope", "pan_depth_envelope"):
+                if env_key in clean:
+                    clean[env_key] = coerce_envelope(clean[env_key])
+            stem_params[name] = StemEffectParams(stem=name, **clean)
         if set(stem_params) != {"vocals", "drums", "bass", "other"}:
             raise ValueError("Incomplete stem_params from LLM")
         return RenderPlan(
             profile_name=profile_name,
             stem_params=stem_params,
-            master_limiter_db=float(data.get("master_limiter_db", fallback.master_limiter_db)),
             master_gain_db=float(data.get("master_gain_db", fallback.master_gain_db)),
+            master_glue_threshold_db=float(
+                data.get("master_glue_threshold_db", data.get("master_limiter_db", fallback.master_glue_threshold_db))
+            ),
+            master_lufs_target=float(data.get("master_lufs_target", fallback.master_lufs_target)),
+            master_true_peak_db=float(data.get("master_true_peak_db", fallback.master_true_peak_db)),
+            master_limiter_db=float(data.get("master_limiter_db", fallback.master_glue_threshold_db)),
         )
     except Exception as exc:
         logger.warning("LLM plan parse failed (%s); using rule-based plan", exc)

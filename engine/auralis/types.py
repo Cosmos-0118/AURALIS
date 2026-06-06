@@ -13,8 +13,18 @@ OUTPUT_PROFILES = (
     "cinema",
     "concert",
     "hyper_immersive",
-    "god",
+    "zenith",
 )
+
+# Legacy CLI / API slugs accepted during migration
+PROFILE_ALIASES: dict[str, str] = {
+    "god": "zenith",
+}
+
+
+def resolve_profile(name: str) -> str:
+    """Normalize profile slug, applying legacy aliases."""
+    return PROFILE_ALIASES.get(name, name)
 
 
 @dataclass
@@ -90,6 +100,24 @@ class StemEffectParams:
     comp_ratio: float = 2.5
     comp_attack_ms: float = 5.0
     comp_release_ms: float = 80.0
+    # Kinetic Engine — static values above are peaks/fallbacks
+    width_envelope: list[tuple[float, float]] | None = None
+    reverb_mix_envelope: list[tuple[float, float]] | None = None
+    pan_depth_envelope: list[tuple[float, float]] | None = None
+    # Micro-detail recovery (tone board)
+    tape_drive_db: float = 0.0
+    transient_shaping: bool = False
+    transient_threshold_db: float = -15.0
+    transient_ratio: float = 4.0
+    transient_attack_ms: float = 30.0
+    transient_release_ms: float = 50.0
+    vocal_air_db: float = 0.0
+    vocal_air_hz: float = 8500.0
+    # Elliptical M/S filter — HPF on Side channel (0 = disabled)
+    elliptical_side_hpf_hz: float = 0.0
+
+    def has_automation(self) -> bool:
+        return bool(self.width_envelope or self.reverb_mix_envelope or self.pan_depth_envelope)
 
 
 @dataclass
@@ -98,14 +126,20 @@ class RenderPlan:
 
     profile_name: str
     stem_params: dict[str, StemEffectParams]
-    master_limiter_db: float = -1.0
     master_gain_db: float = 0.0
+    master_glue_threshold_db: float = -1.0
+    master_lufs_target: float = -14.0
+    master_true_peak_db: float = -0.1
+    # Legacy alias consumed by older render plans on disk
+    master_limiter_db: float = -1.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "profile_name": self.profile_name,
-            "master_limiter_db": self.master_limiter_db,
             "master_gain_db": self.master_gain_db,
+            "master_glue_threshold_db": self.master_glue_threshold_db,
+            "master_lufs_target": self.master_lufs_target,
+            "master_true_peak_db": self.master_true_peak_db,
             "stem_params": {k: asdict(v) for k, v in self.stem_params.items()},
         }
 

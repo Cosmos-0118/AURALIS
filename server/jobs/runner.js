@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { PYTHON, PYTHONPATH, ROOT } from '../config.js';
+import { PYTHON, PYTHONPATH, ROOT, resolveProfile } from '../config.js';
 import { readJobStatus, writeJobStatus } from './status.js';
 
 /** @type {Map<string, { process: import('child_process').ChildProcess, inputPath: string }>} */
@@ -15,13 +15,14 @@ function cleanupUpload(filePath) {
 }
 
 export function spawnPipeline({ jobId, workDir, inputPath, outputPath, profile, originalName }) {
+  const resolvedProfile = resolveProfile(profile);
   const args = [
     '-m',
     'auralis',
     'process',
     inputPath,
     '--profile',
-    profile,
+    resolvedProfile,
     '-o',
     outputPath,
     '--work-dir',

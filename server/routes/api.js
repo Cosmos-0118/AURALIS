@@ -6,8 +6,8 @@ import path from 'path';
 import {
   MAX_UPLOAD_BYTES,
   PYTHON,
-  VALID_PROFILES,
   rendersDir,
+  resolveProfile,
   uploadDir,
 } from '../config.js';
 import { activeJobs, cancelJob, spawnPipeline } from '../jobs/runner.js';
@@ -45,7 +45,7 @@ export function createApiRouter() {
       return res.status(400).json({ error: 'No audio file uploaded.' });
     }
 
-    const profile = VALID_PROFILES.has(req.body.profile) ? req.body.profile : 'god';
+    const profile = resolveProfile(req.body.profile);
     const inputPath = req.file.path;
     const originalName = path.parse(req.file.originalname).name;
     const jobId = `${Date.now()}_${originalName.replace(/[^\w.-]+/g, '_')}`;

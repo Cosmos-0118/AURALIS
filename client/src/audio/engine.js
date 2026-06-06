@@ -444,7 +444,7 @@ export class AudioEngine {
 
   _profileWidthHint(profile) {
     const widths = {
-      god: 1.85,
+      zenith: 1.85,
       hyper_immersive: 1.55,
       concert: 1.35,
       cinema: 1.45,
@@ -788,7 +788,7 @@ export class AudioEngine {
     
     this.brainReport.activeSection = section;
     
-    // 3. Dynamic Auto-DSP Modifications based on active section (Adaptive goosebump mode!)
+    // 3. Dynamic Auto-DSP Modifications based on active section (Kinetic Engine)
     if (section === 'CHORUS / DROP') {
       // Dynamic Chorus Lift / Drop Enhancement
       // Boost bass by extra +2dB

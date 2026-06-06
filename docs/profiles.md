@@ -10,8 +10,8 @@ Each profile is a preset of per-stem DSP parameters built by `analysis/planner.p
 | `basshead` | Sub-heavy genres | +6 dB @ 80 Hz bass, tight 4:1 compression, narrow stage |
 | `cinema` | Film score, ambience | 2.5× width on `other`, heavy reverb, 6:1 drum squash |
 | `concert` | Live energy | Arena reverb, pan LFO locked to BPM ÷ 4 |
-| `hyper_immersive` | EDM / pop immersion | Between concert and god — wide stage, moderate LFO |
-| `god` | Maximum headphone wow | Spatial drums/other only; vocals/bass stay centered |
+| `hyper_immersive` | EDM / pop immersion | Between concert and zenith — wide stage, moderate LFO |
+| `zenith` | Peak-tier immersion | Kinetic Engine + maximal spatial staging; vocals/bass centered |
 
 ## Stem rules (all profiles)
 
@@ -42,9 +42,9 @@ Reverb-heavy arena feel. Pan LFO on drums and other at quarter-note rate (BPM ÷
 
 Strong width (1.55 drums, 1.95 other) with BPM-synced pan LFO (~0.15 Hz scaled). Moderate reverb. Vocals slightly narrowed for contrast.
 
-### God
+### Zenith
 
-Center-locked vocals/bass. Drums: 1.525× width, pan LFO at BPM × 0.125, depth 0.65. Other: 1.85× width, depth 0.85, rich reverb. Master gain +0.5 dB on electronic/dance tracks.
+Center-locked vocals/bass. Drums: 1.525× width, pan LFO at BPM × 0.125, depth 0.65. Other: 1.85× width, depth 0.85, rich reverb. Kinetic Engine breathes width and reverb with section energy. Master gain +0.5 dB on electronic/dance tracks.
 
 ## DSP primitives (Pedalboard)
 
@@ -58,11 +58,23 @@ Each stem chain can include:
 - Pan LFO (sine modulation on L/R balance)
 - Master gain + peak limiter on mixdown
 
+## Micro-detail (tone board)
+
+Static per-profile values in the planner; transient thresholds get a light RMS nudge from Librosa analysis.
+
+| Stem | Node | Profiles |
+|------|------|----------|
+| `bass` | `Distortion` (tape drive) | Basshead 5 dB, Zenith 3 dB, Cinema 2.5 dB |
+| `drums` | Slow-attack `Compressor` (transient punch) | Zenith, Concert, Cinema, Hyper Immersive, Basshead |
+| `vocals` | `HighShelfFilter` @ 8.5 kHz (air) | Zenith 2.5 dB, Concert 2 dB, Cinema 1.5 dB |
+
+Audiophile bypasses all micro-detail nodes for transparency.
+
 ## CLI usage
 
 ```bash
 export PYTHONPATH=engine
-python -m auralis process track.mp3 --profile god -o out.wav
+python -m auralis process track.mp3 --profile zenith -o out.wav
 python -m auralis analyze track.mp3 --profile cinema -o profile.json
 ```
 
@@ -72,5 +84,5 @@ Pass `--llm` to send the Librosa profile to OpenRouter/Groq. The model adjusts s
 
 ```bash
 export OPENROUTER_API_KEY=sk-...
-python -m auralis process track.mp3 --profile god --llm
+python -m auralis process track.mp3 --profile zenith --llm
 ```

@@ -52,6 +52,7 @@
 | Pedalboard | 0.9+ | Per-stem EQ, reverb, compression, mixdown |
 | NumPy / SciPy | 1.26+ / 1.11+ | Signal math |
 | soundfile | 0.12+ | WAV read/write |
+| pyloudnorm | 0.1+ | ITU-R BS.1770 LUFS normalization on master bus |
 
 **Optional:**
 

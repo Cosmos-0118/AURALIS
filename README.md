@@ -31,7 +31,7 @@ npm install
 # Python virtual environment
 python3 -m venv engine/.venv
 source engine/.venv/bin/activate
-pip install -r engine/requirements.txt
+python -m pip install -r engine/requirements.txt
 ```
 
 ## Run
@@ -43,7 +43,7 @@ npm start
 - Frontend: http://localhost:5173
 - API: http://localhost:3000/api/health
 
-Upload a track in the UI, pick a profile (God, Cinema, Concert, etc.), and wait for the server-rendered WAV.
+Upload a track in the UI, pick a profile (Zenith, Cinema, Concert, etc.), and wait for the server-rendered WAV.
 
 ## CLI (headless)
 
@@ -53,11 +53,11 @@ From the project root with the venv activated:
 export PYTHONPATH=engine
 
 # Full pipeline
-python -m auralis process song.mp3 --profile god -o out.wav
+python -m auralis process song.mp3 --profile zenith -o out.wav
 
 # Individual steps
 python -m auralis separate song.mp3 --work-dir data/renders/my_track
-python -m auralis analyze song.mp3 -o profile.json --profile god
+python -m auralis analyze song.mp3 -o profile.json --profile zenith
 ```
 
 ## Output profiles
@@ -68,8 +68,8 @@ python -m auralis analyze song.mp3 -o profile.json --profile god
 | `basshead` | +6 dB sub, tight compression |
 | `cinema` | Wide reverb, cinematic squash |
 | `concert` | Arena reverb, BPM-synced pan LFO |
-| `hyper_immersive` | Between concert and god |
-| `god` | Spatial drums/other; vocals/bass center-locked |
+| `hyper_immersive` | Between concert and zenith |
+| `zenith` | Peak-tier immersion; Kinetic Engine on spatial stems |
 
 ## Environment variables
 
@@ -85,6 +85,7 @@ python -m auralis analyze song.mp3 -o profile.json --profile god
 - [Tech stack](docs/techstack.md) — languages, libraries, and tooling
 - [Architecture](docs/architecture.md) — request flow and component boundaries
 - [Profiles](docs/profiles.md) — DSP preset reference
+- [Naming](docs/naming.md) — Kinetic Engine, Zenith, and profile slugs
 
 ## License
 

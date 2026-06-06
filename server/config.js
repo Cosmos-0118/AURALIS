@@ -22,8 +22,19 @@ export const VALID_PROFILES = new Set([
   'cinema',
   'concert',
   'hyper_immersive',
-  'god',
+  'zenith',
 ]);
+
+/** @type {Record<string, string>} */
+export const PROFILE_ALIASES = {
+  god: 'zenith',
+};
+
+export function resolveProfile(raw) {
+  const key = String(raw || 'zenith').toLowerCase().trim();
+  const normalized = PROFILE_ALIASES[key] || key;
+  return VALID_PROFILES.has(normalized) ? normalized : 'zenith';
+}
 
 export const uploadDir = path.join(ROOT, 'data', 'uploads');
 export const rendersDir = path.join(ROOT, 'data', 'renders');

@@ -14,6 +14,7 @@ pedalboard>=0.9.13
 soundfile>=0.12.1
 numpy>=1.26.0
 scipy>=1.11.0
+pyloudnorm>=0.1.1
 
 # Optional: LLM parameter generation
 # openai>=1.0.0   # OpenRouter / GroqCloud use OpenAI-compatible API
