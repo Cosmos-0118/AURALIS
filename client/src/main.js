@@ -1,12 +1,13 @@
-import { cancelJob, downloadJobResult, pollJob, submitJob } from './api/pipeline.js';
+import { cancelJob, downloadJobResult, fetchJob, pollJob, submitJob } from './api/pipeline.js';
 import { AudioEngine } from './audio/engine.js';
 import {
-  drawCrtLive,
   drawCrtStatic,
   drawCrtWaveform,
+  progressFromClientX,
   resetCrtDisplay,
 } from './components/crt-display.js';
 import { RendersPanel } from './components/renders-panel.js';
+import { TransportPlayer } from './components/transport-player.js';
 import { ThemeManager } from './themes/manager.js';
 import { LayoutScaler } from './layout/scaler.js';
 import { ProfileDropdown, PROFILE_OPTIONS } from './components/profile-dropdown.js';
@@ -17,7 +18,7 @@ const engine = new AudioEngine();
 // DOM refs — populated in initApp
 let dropzone, fileInput, bayIdle, bayLoading, bayLoaded, fileNameSpan, titleWindow, clearFileBtn;
 let decodePercent, decodeFileName, decodeStatus, decodeTrackFill, decodeSegmentBar;
-let waveformCanvas, progressBar, playBtn, masterVolume;
+let waveformCanvas, playBtn, masterVolume;
 let lcdConsole, lcdTime;
 let ledPower, ledProcess, ledActive;
 let meterBass, meterTreble, meterOrbit, meterWidth;
@@ -159,7 +160,165 @@ function getCanvasColors() {
     dim: ThemeManager.getToken('--theme-crt-dim'),
     shadow: ThemeManager.getToken('--theme-crt-shadow'),
     decay: ThemeManager.getToken('--theme-crt-bg-decay'),
+    accent: ThemeManager.getToken('--theme-accent-primary'),
   };
+}
+
+
+
+function syncPlaybackUi() {
+  const progress = getPlaybackProgress();
+  const duration = engine.decodedBuffer?.duration ?? 0;
+
+  if (!TransportPlayer.isSeeking()) {
+    TransportPlayer.sync({
+      playing: engine.isPlaying,
+      progress: progress ?? 0,
+      duration,
+    });
+  }
+
+  if (playBtn) {
+    playBtn.classList.toggle('active', engine.isPlaying);
+    playBtn.disabled = !engine.decodedBuffer;
+  }
+
+
+
+  if (progress != null && lcdTime && engine.decodedBuffer) {
+    const elapsed = progress * engine.decodedBuffer.duration;
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = Math.floor(elapsed % 60);
+    const hundredths = Math.floor((elapsed % 1) * 100);
+    const pad = (n) => (n < 10 ? '0' : '') + n;
+    lcdTime.innerText = `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
+  }
+}
+
+function togglePlayback() {
+  if (!engine.decodedBuffer) return;
+
+  if (!engine.isPlaying) {
+    engine.play();
+    startCassetteSpindles();
+  } else {
+    engine.pause();
+    stopCassetteSpindles();
+  }
+  syncPlaybackUi();
+}
+
+function seekPlayback(progress, { live = false } = {}) {
+  if (!engine.decodedBuffer) return;
+  const clamped = Math.max(0, Math.min(1, progress));
+  engine.seek(clamped);
+
+
+  if (!engine.isPlaying || live) {
+    drawWaveform(engine.decodedBuffer);
+  }
+
+  syncPlaybackUi();
+}
+
+function attachPlaybackEndedHandler() {
+  engine.onEndedCallback = () => {
+    engine.pause();
+    seekPlayback(0);
+    stopCassetteSpindles();
+    syncPlaybackUi();
+    ledActive?.classList.remove('active');
+
+    const report = engine.brainReport;
+    printConsoleLines([
+      'PLAYBACK COMPLETED.',
+      `GENRE HISTOGRAM: ${(report.genre || 'UNKNOWN').toUpperCase()}`,
+      'SYSTEM DOCKED // STANDBY MODE.',
+    ]);
+  };
+}
+
+async function mountLoadedTrack({
+  buffer,
+  trackName,
+  jobId,
+  meta,
+  autoplay = false,
+  consoleLines = [],
+}) {
+  lastRenderedJobId = jobId;
+  lastTrackName = trackName;
+
+  resetCrtDisplay();
+  drawWaveform(buffer);
+  setupBrainConsoleSync();
+  applyTrackMeta(meta);
+
+  bayLoaded?.classList.remove('hidden');
+  bayIdle?.classList.add('hidden');
+  setUploadActive(false);
+  setCassetteTitle(trackName);
+  setDownloadAvailable(Boolean(jobId));
+  TransportPlayer.setTrack(trackName);
+  attachPlaybackEndedHandler();
+  RendersPanel.refresh();
+
+  if (consoleLines.length) printConsoleLines(consoleLines);
+
+  ledActive?.classList.add('active');
+
+  if (autoplay) {
+    engine.play();
+    startCassetteSpindles();
+  }
+
+  syncPlaybackUi();
+}
+
+async function loadRenderFromLibrary(render) {
+  if (!render || render.status !== 'complete' || !render.hasOutput) {
+    throw new Error('Selected render is not ready for playback.');
+  }
+
+  engine.stop();
+  const [blob, job] = await Promise.all([
+    downloadJobResult(render.jobId),
+    fetchJob(render.jobId),
+  ]);
+
+  const metaPayload = job.meta || {};
+  const report = {
+    bpm: parseFloat(metaPayload.bpm ?? 120),
+    genre: metaPayload.genre || 'Server Rendered',
+    mood: metaPayload.mood || 'Pipeline Mix',
+    profile: metaPayload.profile || render.profile || 'zenith',
+    ai_score: metaPayload.ai_score || null,
+    safeguard: metaPayload.safeguard || null,
+    safeguard_message: metaPayload.safeguard_message || null,
+  };
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const buffer = await engine.loadProcessedAudio(arrayBuffer, report);
+  const trackName = render.originalName || 'render';
+
+  await mountLoadedTrack({
+    buffer,
+    trackName,
+    jobId: render.jobId,
+    meta: {
+      bpm: report.bpm,
+      genre: report.genre,
+      mood: report.mood,
+      profile: report.profile,
+    },
+    autoplay: true,
+    consoleLines: [
+      'RENDER LOADED FROM LIBRARY.',
+      `TRACK: ${trackName.toUpperCase()}`,
+      `PROFILE: ${(report.profile || render.profile || 'UNKNOWN').toUpperCase()}`,
+      'PLAYBACK ENGAGED.',
+    ],
+  });
 }
 
 function getPlaybackProgress() {
@@ -187,7 +346,6 @@ function initApp() {
   decodeTrackFill = document.getElementById('decodeTrackFill');
   decodeSegmentBar = document.getElementById('decodeSegmentBar');
   waveformCanvas = document.getElementById('waveformCanvas');
-  progressBar = document.getElementById('progressBar');
   playBtn = document.getElementById('playBtn');
   masterVolume = document.getElementById('masterVolume');
   lcdConsole = document.getElementById('lcdConsole');
@@ -218,8 +376,13 @@ function initApp() {
   LayoutScaler.init();
   ThemeDropdown.init();
   ProfileDropdown.init();
+  TransportPlayer.init({
+    onPlayToggle: togglePlayback,
+    onSeek: seekPlayback,
+  });
   RendersPanel.init({
     onDeleted: handleRendersDeleted,
+    onLoadPlay: loadRenderFromLibrary,
   });
   bindEvents();
 
@@ -270,17 +433,7 @@ function bindEvents() {
   }
 
   if (playBtn) {
-    playBtn.addEventListener('click', () => {
-      if (!engine.isPlaying) {
-        engine.play();
-        playBtn.classList.add('active');
-        startCassetteSpindles();
-      } else {
-        engine.pause();
-        playBtn.classList.remove('active');
-        stopCassetteSpindles();
-      }
-    });
+    playBtn.addEventListener('click', togglePlayback);
   }
 
   if (masterVolume) {
@@ -294,6 +447,8 @@ function bindEvents() {
       downloadRenderedTrack();
     });
   }
+
+
 }
 
 function handleRendersDeleted(deletedIds = []) {
@@ -362,16 +517,22 @@ function refreshCanvas() {
 }
 
 function resizeCanvas(canvas) {
-  if (!canvas?.parentElement) return;
-  const rect = canvas.parentElement.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(rect.width));
-  const h = Math.max(1, Math.round(rect.height));
+  const host = canvas?.parentElement;
+  if (!host) return;
 
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
+  const w = Math.max(1, host.clientWidth);
+  const h = Math.max(1, host.clientHeight);
+  const dpr = window.devicePixelRatio || 1;
+
+  const bitmapW = Math.round(w * dpr);
+  const bitmapH = Math.round(h * dpr);
+
+  if (canvas.width !== bitmapW || canvas.height !== bitmapH) {
+    canvas.width = bitmapW;
+    canvas.height = bitmapH;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+  }
 
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -549,18 +710,10 @@ async function loadCassette(file) {
 
     updateDecodeProgress(2, 'UPLOADING TO PIPELINE...');
     const { buffer, report: serverReport, meta: jobMeta, jobId } = await processViaBackend(file, profile);
-    lastRenderedJobId = jobId;
-    lastTrackName = file.name;
 
     await finishDecodeProgress();
     hideDecodeLoader();
     ledProcess?.classList.remove('active');
-    ledActive?.classList.add('active');
-
-    bayLoaded?.classList.remove('hidden');
-    setCassetteTitle(file.name);
-    if (playBtn) playBtn.disabled = false;
-    setDownloadAvailable(true);
 
     const r = engine.brainReport;
     const meta = {
@@ -571,32 +724,22 @@ async function loadCassette(file) {
       safeguard: jobMeta?.safeguard ?? serverReport.safeguard ?? null,
       safeguard_message: jobMeta?.safeguard_message ?? serverReport.safeguard_message ?? null,
     };
-    applyTrackMeta(meta);
 
-    printConsoleLines([
-      'PIPELINE RENDER COMPLETE.',
-      `PROFILE: ${(meta.profile || profile).toUpperCase()}`,
-      `GENRE DETECTED: ${(meta.genre || r.genre).toUpperCase()}`,
-      `DYNAMIC REGIME: ${(meta.mood || r.mood).toUpperCase()}`,
-      `BPM CALCULATED: ${formatBpm(meta.bpm)} BEATS/MIN`,
-      meta.safeguard_message || null,
-      'SERVER MIX LOADED // DIRECT PLAYBACK.',
-    ].filter(Boolean));
-
-    drawWaveform(buffer);
-    setupBrainConsoleSync();
-    RendersPanel.refresh();
-
-    engine.onEndedCallback = () => {
-      stopCassetteSpindles();
-      playBtn?.classList.remove('active');
-      ledActive?.classList.add('active');
-      printConsoleLines([
-        'PLAYBACK COMPLETED.',
-        `GENRE HISTOGRAM: ${r.genre.toUpperCase()}`,
-        'SYSTEM DOCKED // STANDBY MODE.',
-      ]);
-    };
+    await mountLoadedTrack({
+      buffer,
+      trackName: file.name,
+      jobId,
+      meta,
+      consoleLines: [
+        'PIPELINE RENDER COMPLETE.',
+        `PROFILE: ${(meta.profile || profile).toUpperCase()}`,
+        `GENRE DETECTED: ${(meta.genre || r.genre).toUpperCase()}`,
+        `DYNAMIC REGIME: ${(meta.mood || r.mood).toUpperCase()}`,
+        `BPM CALCULATED: ${formatBpm(meta.bpm)} BEATS/MIN`,
+        meta.safeguard_message || null,
+        'SERVER MIX LOADED // DIRECT PLAYBACK.',
+      ].filter(Boolean),
+    });
   } catch (err) {
     await cancelActiveJob();
     hideDecodeLoader();
@@ -624,6 +767,7 @@ async function resetCassette() {
   lastConsoleTick = 0;
   resetCrtDisplay();
   setDownloadAvailable(false);
+  TransportPlayer.reset();
 
   if (cassetteBadgeRow) cassetteBadgeRow.hidden = true;
   if (cassetteMetaBadge) cassetteMetaBadge.textContent = 'TYPE II · HI-FI';
@@ -640,7 +784,7 @@ async function resetCassette() {
   }
   ledActive?.classList.remove('active');
   ledProcess?.classList.remove('active');
-  if (progressBar) progressBar.style.setProperty('--play-progress', '0');
+
 
   if (meterBass) meterBass.style.width = '0%';
   if (meterTreble) meterTreble.style.width = '0%';
@@ -675,7 +819,23 @@ function drawWaveform(buffer) {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
   const lineScale = Math.max(1, w / 400);
-  drawCrtWaveform(ctx, w, h, buffer, getCanvasColors(), lineScale);
+
+  const opts = {
+    playing: false,
+    progress: getPlaybackProgress() ?? 0,
+  };
+
+  if (engine.isPlaying && engine.analyser) {
+    const dataArray = new Uint8Array(engine.analyser.frequencyBinCount);
+    engine.analyser.getByteTimeDomainData(dataArray);
+    const beatPhase = engine.getBeatPhase();
+    opts.playing = true;
+    opts.dataArray = dataArray;
+    opts.beatPhase = beatPhase;
+    opts.beatPulse = 0.55 + 0.45 * Math.sin(beatPhase * Math.PI * 2);
+  }
+
+  drawCrtWaveform(ctx, w, h, buffer, getCanvasColors(), lineScale, opts);
 }
 
 function startCassetteSpindles() {
@@ -738,51 +898,14 @@ function animationLoop() {
     if (engine.isPlaying) engine.processAutomaticBraintick();
   }
 
-  if (!engine.isPlaying) {
-    if (engine.decodedBuffer) {
-      drawWaveform(engine.decodedBuffer);
-    } else {
-      drawStaticScreen();
-    }
+  if (engine.decodedBuffer) {
+    drawWaveform(engine.decodedBuffer);
   } else {
-    renderCRTDisplay();
+    drawStaticScreen();
   }
 
-  const progress = getPlaybackProgress();
-  if (progress != null && lcdTime && engine.decodedBuffer) {
-    const elapsed = progress * engine.decodedBuffer.duration;
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = Math.floor(elapsed % 60);
-    const hundredths = Math.floor((elapsed % 1) * 100);
-    const pad = (n) => (n < 10 ? '0' : '') + n;
-    lcdTime.innerText = `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
-    if (progressBar) progressBar.style.setProperty('--play-progress', String(progress));
-  }
-
+  syncPlaybackUi();
   requestAnimationFrame(animationLoop);
-}
-
-function renderCRTDisplay() {
-  if (!engine.isPlaying || !engine.ctx || !waveformCanvas || !engine.analyser) return;
-
-  const canvas = waveformCanvas;
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.width / dpr;
-  const h = canvas.height / dpr;
-  const lineScale = Math.max(1, w / 400);
-
-  const bufferLength = engine.analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
-  engine.analyser.getByteTimeDomainData(dataArray);
-
-  const beatPhase = engine.getBeatPhase();
-  const beatPulse = 0.6 + 0.4 * Math.sin(beatPhase * Math.PI * 2);
-
-  drawCrtLive(ctx, w, h, engine.decodedBuffer, dataArray, getCanvasColors(), lineScale, {
-    beatPulse,
-    phase: beatPhase,
-  });
 }
 
 if (document.readyState === 'loading') {

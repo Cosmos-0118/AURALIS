@@ -154,7 +154,6 @@
           <div class="crt-grid-overlay"></div>
           <div class="crt-content">
             <canvas id="waveformCanvas"></canvas>
-            <div class="crt-playback-progress" id="progressBar"></div>
             <div class="crt-scanline"></div>
           </div>
         </div>
@@ -328,7 +327,21 @@
       <!-- Physical Control Deck -->
       <section class="control-deck">
         <div class="control-panel-label">DYNAMIC HARDWARE INTERFACE</div>
-        
+
+        <div class="transport-player" id="transportPlayer">
+          <button type="button" class="transport-play-btn" id="transportPlayBtn" disabled aria-label="Play" aria-pressed="false">
+            <span class="transport-play-icon transport-play-icon-play" aria-hidden="true"></span>
+            <span class="transport-play-icon transport-play-icon-pause" aria-hidden="true"></span>
+          </button>
+          <span class="transport-player-title" id="transportTitle">NO TRACK LOADED</span>
+          <input type="range" class="transport-seek" id="transportSeek" min="0" max="1" step="0.001" value="0" disabled aria-label="Seek">
+          <div class="transport-times">
+            <span id="transportTimeCurrent">00:00</span>
+            <span class="transport-times-sep">/</span>
+            <span id="transportTimeTotal">00:00</span>
+          </div>
+        </div>
+
         <div class="deck-elements">
           <div class="deck-module">
             <div class="module-control-area">
@@ -409,6 +422,7 @@
           <span>SELECT ALL</span>
         </label>
         <div class="renders-modal-footer-actions">
+          <button type="button" class="renders-modal-btn renders-modal-btn-accent" id="rendersLoadPlay" disabled>LOAD &amp; PLAY</button>
           <button type="button" class="renders-modal-btn" id="rendersDeleteSelected" disabled>DELETE SELECTED</button>
           <button type="button" class="renders-modal-btn renders-modal-btn-danger" id="rendersDeleteAll" disabled>DELETE ALL</button>
         </div>

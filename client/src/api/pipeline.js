@@ -84,6 +84,14 @@ export async function downloadJobResult(jobId) {
   return response.blob();
 }
 
+export async function fetchJob(jobId) {
+  const response = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response, `Job fetch failed (${response.status})`));
+  }
+  return response.json();
+}
+
 export async function cancelJob(jobId) {
   try {
     await fetch(`${API_BASE}/api/jobs/${jobId}`, { method: 'DELETE' });

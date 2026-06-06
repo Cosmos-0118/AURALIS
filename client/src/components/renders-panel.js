@@ -13,11 +13,13 @@ let retryBtn = null;
 let selectAllEl = null;
 let deleteSelectedBtn = null;
 let deleteAllBtn = null;
+let loadPlayBtn = null;
 let refreshBtn = null;
 let isOpen = false;
 let renders = [];
 let loadError = null;
 let onDeleted = null;
+let onLoadPlay = null;
 
 function formatRenderDate(ts) {
   if (!ts) return '—';
@@ -45,9 +47,23 @@ function getSelectedJobIds() {
   );
 }
 
+function getSelectedRenders() {
+  const ids = getSelectedJobIds();
+  return renders.filter((render) => ids.includes(render.jobId));
+}
+
+function getPlayableSelection() {
+  const selected = getSelectedRenders();
+  if (selected.length !== 1) return null;
+  const render = selected[0];
+  if (render.status !== 'complete' || !render.hasOutput) return null;
+  return render;
+}
+
 function syncActionState() {
   const selected = getSelectedJobIds();
   const count = renders.length;
+  const playable = getPlayableSelection();
 
   if (selectAllEl) {
     selectAllEl.checked = count > 0 && selected.length === count;
@@ -55,6 +71,7 @@ function syncActionState() {
     selectAllEl.disabled = count === 0 || Boolean(loadError);
   }
 
+  if (loadPlayBtn) loadPlayBtn.disabled = !playable || Boolean(loadError);
   if (deleteSelectedBtn) deleteSelectedBtn.disabled = selected.length === 0 || Boolean(loadError);
   if (deleteAllBtn) deleteAllBtn.disabled = count === 0 || Boolean(loadError);
 
@@ -261,6 +278,7 @@ async function deleteAll() {
 export class RendersPanel {
   static init(options = {}) {
     onDeleted = options.onDeleted ?? null;
+    onLoadPlay = options.onLoadPlay ?? null;
 
     trigger = document.getElementById('rendersPanelTrigger');
     modal = document.getElementById('rendersModal');
@@ -275,6 +293,7 @@ export class RendersPanel {
     selectAllEl = document.getElementById('rendersSelectAll');
     deleteSelectedBtn = document.getElementById('rendersDeleteSelected');
     deleteAllBtn = document.getElementById('rendersDeleteAll');
+    loadPlayBtn = document.getElementById('rendersLoadPlay');
     refreshBtn = document.getElementById('rendersPanelRefresh');
 
     if (!trigger || !modal || !listEl || !emptyEl) {
@@ -308,6 +327,27 @@ export class RendersPanel {
 
     deleteSelectedBtn?.addEventListener('click', deleteSelected);
     deleteAllBtn?.addEventListener('click', deleteAll);
+
+    loadPlayBtn?.addEventListener('click', async () => {
+      const render = getPlayableSelection();
+      if (!render || !onLoadPlay) return;
+      loadPlayBtn.disabled = true;
+      try {
+        await onLoadPlay(render);
+        closeModal();
+      } catch (err) {
+        window.dispatchEvent(new CustomEvent('auralisConsole', {
+          detail: {
+            lines: [
+              'LOAD RENDER FAILED.',
+              String(err.message || err).toUpperCase(),
+            ],
+          },
+        }));
+      } finally {
+        syncActionState();
+      }
+    });
 
     loadRenders().catch(() => {});
     return true;
